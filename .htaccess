@@ -1,0 +1,40 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /timetable/
+
+    # ให้ /timetable/ และ /timetable/index.php แสดง public/index.php เสมอ
+    RewriteRule ^$ public/index.php [L]
+    RewriteRule ^index\.php$ public/index.php [L]
+
+    # Public, direct view for holiday duty (no .php in URL)
+    RewriteRule ^shift_login/?$ public/shift_login.php [L,QSA]
+    RewriteRule ^shift_logout/?$ public/shift_logout.php [L,QSA]
+    RewriteRule ^shift_view/?$ public/holiday_duty_view.php [L,QSA]
+    
+    # ซ่อน /public จาก URL
+    # ถ้าใครพิมพ์ /timetable/public/xxx ให้ redirect ไป /timetable/xxx
+    # ใช้ path แบบ relative เพื่อไม่ให้หลุดออกไปที่ / ของโดเมน (เช่น http://localhost/users.php)
+    # ใช้ 302 ชั่วคราวเพื่อลดปัญหา browser cache จาก 301 ระหว่างแก้ไข
+    RewriteCond %{THE_REQUEST} \s/+timetable/public/ [NC]
+    RewriteRule ^public/(.*)$ $1 [R=302,L,QSA]
+    
+    # ถ้าเป็นไฟล์หรือโฟลเดอร์ที่มีอยู่จริง ให้เข้าถึงได้เลย
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # ส่งคำขอทั้งหมดไปที่ public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# ป้องกันการเข้าถึงไฟล์ที่ขึ้นต้นด้วย . (hidden files)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# กำหนด charset เป็น UTF-8
+AddDefaultCharset UTF-8
+
+# Enable gzip compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
