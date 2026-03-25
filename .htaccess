@@ -1,6 +1,5 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /timetable/
 
     # ให้ /timetable/ และ /timetable/index.php แสดง public/index.php เสมอ
     RewriteRule ^$ public/index.php [L]
@@ -15,7 +14,7 @@
     # ถ้าใครพิมพ์ /timetable/public/xxx ให้ redirect ไป /timetable/xxx
     # ใช้ path แบบ relative เพื่อไม่ให้หลุดออกไปที่ / ของโดเมน (เช่น http://localhost/users.php)
     # ใช้ 302 ชั่วคราวเพื่อลดปัญหา browser cache จาก 301 ระหว่างแก้ไข
-    RewriteCond %{THE_REQUEST} \s/+timetable/public/ [NC]
+    RewriteCond %{THE_REQUEST} \s/+[^ ]*/public/ [NC]
     RewriteRule ^public/(.*)$ $1 [R=302,L,QSA]
     
     # ถ้าเป็นไฟล์หรือโฟลเดอร์ที่มีอยู่จริง ให้เข้าถึงได้เลย

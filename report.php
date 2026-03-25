@@ -72,10 +72,7 @@ $printed_at    = $_GET['printed_at'] ?? date('Y-m-d');
 $u = currentUser();
 $uid = (int)($u['id'] ?? 0);
 
-$cookiePath = '/timetable';
-if (!empty($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/timetable/') === false) {
-  $cookiePath = '/';
-}
+$cookiePath = (defined('BASE_URL') && (string)BASE_URL !== '') ? (string)BASE_URL : '/';
 
 $cookieReportPrefs = [];
 $cookieName = $uid > 0 ? ('timetable_report_prefs_u'.$uid) : '';

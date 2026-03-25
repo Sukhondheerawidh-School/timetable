@@ -125,10 +125,7 @@ function tt_report_global_prefs_load(PDO $pdo): array {
 
 $globalReportPrefs = tt_report_global_prefs_load($pdo);
 
-$cookiePath = '/timetable';
-if (!empty($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/timetable/') === false) {
-  $cookiePath = '/';
-}
+$cookiePath = (defined('BASE_URL') && (string)BASE_URL !== '') ? (string)BASE_URL : '/';
 
 $cookieReportPrefs = [];
 $cookieName = $uid > 0 ? ('timetable_report_prefs_u'.$uid) : '';
@@ -1096,7 +1093,7 @@ $reportHtml = buildReportHTML(
 ---------------------------*/
 if ($export==='print'){
   $title = 'พิมพ์รายงานตารางสอน';
-  $favicon = '/timetable/favicon.ico?v='.(string)time();
+  $favicon = url('favicon.ico?v='.(string)time());
   echo '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">';
   echo '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
   echo '<title>'.h($title).'</title>';
