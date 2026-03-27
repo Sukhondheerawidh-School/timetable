@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 tt_duty_init($pdo);
@@ -27,6 +28,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '') throw new Exception('กรุณากรอกชื่อเวร/จุด');
         $st = $pdo->prepare('INSERT INTO duty_master_posts(post_name, building_id, is_active, sort_order) VALUES (?,?,?,?)');
         $st->execute([$name, $building_id, 1, 0]);
+
+        logCreate('duty_master_posts', (int)$pdo->lastInsertId(), [
+          'post_name' => $name,
+          'building_id' => $building_id,
+          'is_active' => 1,
+          'sort_order' => 0,
+        ]);
         flash_set('success', 'เพิ่มเวร/จุดแล้ว');
         redirect('duty_posts.php');
       } elseif ($action === 'update') {
@@ -35,24 +43,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $building_id = ($_POST['building_id'] ?? '') !== '' ? (int)$_POST['building_id'] : null;
         if ($id <= 0) throw new Exception('ไม่พบ ID');
         if ($name === '') throw new Exception('กรุณากรอกชื่อเวร/จุด');
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_posts WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
+
         $st = $pdo->prepare('UPDATE duty_master_posts SET post_name=?, building_id=? WHERE id=?');
         $st->execute([$name, $building_id, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['post_name'] = $name;
+          $newRow['building_id'] = $building_id;
+          logUpdate('duty_master_posts', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'แก้ไขแล้ว');
         redirect('duty_posts.php');
       } elseif ($action === 'toggle') {
         $id = (int)($_POST['id'] ?? 0);
         $enabled = (int)($_POST['enabled'] ?? 0) ? 1 : 0;
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_posts WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
+
         $st = $pdo->prepare('UPDATE duty_master_posts SET is_active=? WHERE id=?');
         $st->execute([$enabled, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['is_active'] = $enabled;
+          logUpdate('duty_master_posts', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'บันทึกแล้ว');
         redirect('duty_posts.php');
       } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
+
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_posts WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
+
         $cnt = $pdo->prepare('SELECT COUNT(*) FROM duty_master_shifts WHERE duty_post_id=?');
         $cnt->execute([$id]);
         if ((int)$cnt->fetchColumn() > 0) throw new Exception('ลบไม่ได้: มีรายการเวรที่อ้างอิงจุดนี้อยู่');
         $del = $pdo->prepare('DELETE FROM duty_master_posts WHERE id=?');
         $del->execute([$id]);
+
+        if ($oldRow) {
+          logDelete('duty_master_posts', $id, $oldRow);
+        }
         flash_set('success', 'ลบแล้ว');
         redirect('duty_posts.php');
       }

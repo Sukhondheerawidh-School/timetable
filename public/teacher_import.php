@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -134,6 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             fclose($fh);
             unlink($tmpUtf);
+
+            logActivity('import', 'teachers', null, null, [
+              'created_count' => $done,
+              'updated_count' => $updated,
+            ]);
             flash_set('success', "นำเข้าเสร็จสิ้น: เพิ่มใหม่ {$done} รายการ, อัปเดต {$updated} รายการ");
             redirect('teachers.php');
           }

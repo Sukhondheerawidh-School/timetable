@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 tt_duty_init($pdo);
@@ -21,8 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($action === 'toggle') {
         $id = (int)($_POST['id'] ?? 0);
         $enabled = (int)($_POST['enabled'] ?? 0) ? 1 : 0;
+
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_time_slots WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
         $st = $pdo->prepare('UPDATE duty_master_time_slots SET is_active=? WHERE id=?');
         $st->execute([$enabled, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['is_active'] = $enabled;
+          logUpdate('duty_master_time_slots', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'บันทึกแล้ว');
         redirect('duty_slots.php');
       } elseif ($action === 'update') {
@@ -37,8 +48,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($label === '') throw new Exception('กรุณากรอกชื่อช่วงเวลา');
         if ($start === '' || $end === '') throw new Exception('กรุณากรอกเวลาเริ่ม/สิ้นสุด');
 
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_time_slots WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
+
         $st = $pdo->prepare('UPDATE duty_master_time_slots SET slot_label=?, start_time=?, end_time=?, period_no=? WHERE id=?');
         $st->execute([$label, $start, $end, $periodNo, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['slot_label'] = $label;
+          $newRow['start_time'] = $start;
+          $newRow['end_time'] = $end;
+          $newRow['period_no'] = $periodNo;
+          logUpdate('duty_master_time_slots', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'อัปเดตช่วงเวลาแล้ว');
         redirect('duty_slots.php');
       } elseif ($action === 'create_custom') {
@@ -62,10 +86,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ins = $pdo->prepare('INSERT INTO duty_master_time_slots(slot_key, slot_label, period_no, start_time, end_time, is_active, sort_order) VALUES (?,?,?,?,?,?,?)');
         $ins->execute([$slotKey, $label, $periodNo, $start, $end, 1, $sort]);
 
+        logCreate('duty_master_time_slots', (int)$pdo->lastInsertId(), [
+          'slot_key' => $slotKey,
+          'slot_label' => $label,
+          'period_no' => $periodNo,
+          'start_time' => $start,
+          'end_time' => $end,
+          'is_active' => 1,
+          'sort_order' => $sort,
+        ]);
+
         flash_set('success', 'เพิ่มช่วงเวลาเวรแล้ว');
         redirect('duty_slots.php');
       } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
+
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_time_slots WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
         // only allow deleting custom slots (not period-based)
         $chk = $pdo->prepare('SELECT slot_key, period_no FROM duty_master_time_slots WHERE id=?');
         $chk->execute([$id]);
@@ -83,6 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $del = $pdo->prepare('DELETE FROM duty_master_time_slots WHERE id=?');
         $del->execute([$id]);
+
+        if ($oldRow) {
+          logDelete('duty_master_time_slots', $id, $oldRow);
+        }
         flash_set('success', 'ลบช่วงเวลาแล้ว');
         redirect('duty_slots.php');
       }

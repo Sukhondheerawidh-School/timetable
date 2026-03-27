@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $err = '';
@@ -19,6 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       try {
         $stmt = $pdo->prepare('INSERT INTO rooms(room_code, room_name, building, room_type) VALUES (?,?,?,?)');
         $stmt->execute([$code, $name, $building, $type]);
+
+        logCreate('rooms', (int)$pdo->lastInsertId(), [
+          'room_code' => $code,
+          'room_name' => $name,
+          'building' => $building,
+          'room_type' => $type,
+        ]);
         flash_set('success','เพิ่มห้องสำเร็จ');
         redirect('rooms.php');
       } catch (Throwable $e) {

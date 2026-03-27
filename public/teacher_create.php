@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -33,6 +34,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newId > 0) {
           tt_teacher_buildings_set($pdo, $newId, $buildingIds);
         }
+
+        logCreate('teachers', $newId, [
+          'teacher_code' => $code,
+          'title' => $title,
+          'first_name' => $first,
+          'last_name' => $last,
+          'subject_group' => $group,
+          'building_ids' => $buildingIds,
+        ]);
 
         flash_set('success', 'เพิ่มครูสำเร็จ');
         redirect('teachers.php');

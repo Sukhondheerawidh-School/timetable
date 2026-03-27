@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -102,11 +103,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction();
         $ins = $pdo->prepare('INSERT INTO duty_term_exclusions(academic_year_id, term_no, teacher_id, reason) VALUES (?,?,?,?)');
         $ins->execute([$year_id, $term_no, $teacher_id, ($reason === '' ? null : $reason)]);
+        $newId = (int)$pdo->lastInsertId();
 
         // Ensure excluded teachers do not occupy duty slots for the term
         $delAs = $pdo->prepare('DELETE FROM duty_term_assignments WHERE academic_year_id=? AND term_no=? AND teacher_id=?');
         $delAs->execute([$year_id, $term_no, $teacher_id]);
         $pdo->commit();
+
+        logActivity('duty_exclusion_add', 'duty_term_exclusions', $newId ?: null, null, [
+          'academic_year_id' => $year_id,
+          'term_no' => $term_no,
+          'teacher_id' => $teacher_id,
+          'reason' => ($reason === '' ? null : $reason),
+        ]);
 
         flash_set('success', 'บันทึกการละเว้นเวรแล้ว');
         redirect('duty_exclusions.php?year_id='.$year_id.'&term_no='.$term_no);
@@ -142,12 +151,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
+        logActivity('duty_exclusion_copy', 'duty_term_exclusions', null, null, [
+          'src_academic_year_id' => $srcYearId,
+          'src_term_no' => $srcTermNo,
+          'academic_year_id' => $year_id,
+          'term_no' => $term_no,
+          'added_count' => $insCount,
+        ]);
+
         flash_set('success', 'คัดลอกการละเว้นเวรแล้ว (เพิ่ม '.$insCount.' รายการ)');
         redirect('duty_exclusions.php?year_id='.$year_id.'&term_no='.$term_no.'&src_year_id='.$srcYearId.'&src_term_no='.$srcTermNo);
       } elseif ($action === 'remove') {
         $id = (int)($_POST['id'] ?? 0);
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_term_exclusions WHERE id=? AND academic_year_id=? AND term_no=?');
+        $oldStmt->execute([$id, $year_id, $term_no]);
+        $oldRow = $oldStmt->fetch();
         $del = $pdo->prepare('DELETE FROM duty_term_exclusions WHERE id=? AND academic_year_id=? AND term_no=?');
         $del->execute([$id, $year_id, $term_no]);
+
+        if ($oldRow) {
+          logDelete('duty_term_exclusions', $id, $oldRow);
+        }
 
         flash_set('success', 'ลบรายการละเว้นแล้ว');
         redirect('duty_exclusions.php?year_id='.$year_id.'&term_no='.$term_no);

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $err='';
@@ -17,6 +18,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       try{
         $stmt=$pdo->prepare('INSERT INTO period_slots(period_no,start_time,end_time) VALUES (?,?,?)');
         $stmt->execute([$no,$st,$et]);
+
+        logCreate('period_slots', (int)$pdo->lastInsertId(), [
+          'period_no' => $no,
+          'start_time' => $st,
+          'end_time' => $et,
+        ]);
         flash_set('success','เพิ่มคาบสำเร็จ');
         redirect('periods.php');
       }catch(Throwable $e){

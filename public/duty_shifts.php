@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 tt_duty_init($pdo);
@@ -90,15 +91,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
         }
 
+        logActivity('duty_master_shift_create_range', 'duty_master_shifts', null, null, [
+          'building_id' => $building_id,
+          'duty_post_id' => $post_id,
+          'day_of_week' => $days,
+          'slot_ids' => array_map('intval', $slotIds),
+          'required_count' => $required,
+          'created_count' => $created,
+        ]);
+
         flash_set('success', 'สร้างเวรแล้ว ('.$created.' รายการ)');
         redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
       } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
+
+        $oldStmt = $pdo->prepare('SELECT * FROM duty_master_shifts WHERE id=?');
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch();
         $cnt = $pdo->prepare('SELECT COUNT(*) FROM duty_term_assignments WHERE duty_master_shift_id=?');
         $cnt->execute([$id]);
         if ((int)$cnt->fetchColumn() > 0) throw new Exception('ลบไม่ได้: มีการจัดครูลงเวรนี้ในบางเทอมแล้ว');
         $del = $pdo->prepare('DELETE FROM duty_master_shifts WHERE id=?');
         $del->execute([$id]);
+
+        if ($oldRow) {
+          logDelete('duty_master_shifts', $id, $oldRow);
+        }
         flash_set('success', 'ลบเวรแล้ว');
         redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
       } elseif ($action === 'delete_all') {

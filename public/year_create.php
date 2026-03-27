@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 
 requireLogin();
 requireAdmin();
@@ -45,6 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
+
+        logCreate('academic_years', $year_id, [
+          'year_label' => $year_label,
+          'is_active' => $set_active,
+        ]);
         flash_set('success', 'สร้างปีการศึกษา '.$year_label.' สำเร็จ (พร้อมเทอม 1/2)');
         redirect('years.php');
       } catch (Throwable $e) {

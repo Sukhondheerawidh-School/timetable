@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 
 function th_dow_opts(){ return [1=>'จันทร์',2=>'อังคาร',3=>'พุธ',4=>'พฤหัสบดี',5=>'ศุกร์',6=>'เสาร์',7=>'อาทิตย์']; }
@@ -83,6 +84,17 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
         foreach ($teacher_ids as $tid){ $insT->execute([$aid,$tid]); }
 
         $pdo->commit();
+
+        logCreate('activity_groups', $aid, [
+          'academic_year_id' => $year_id,
+          'term_no' => $term_no,
+          'activity_name' => $name,
+          'day_of_week' => $dow,
+          'period_no' => $pno,
+          'room_id' => $room_id,
+          'class_ids' => $class_ids,
+          'teacher_ids' => $teacher_ids,
+        ]);
         flash_set('success','เพิ่มกิจกรรมสำเร็จ');
         redirect('activities.php?year_id='.$year_id.'&term_no='.$term_no);
       }catch(Throwable $e){

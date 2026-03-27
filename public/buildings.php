@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -22,6 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '') throw new Exception('กรุณากรอกชื่ออาคาร');
         $st = $pdo->prepare('INSERT INTO duty_buildings(building_name, is_active, sort_order) VALUES (?,?,?)');
         $st->execute([$name, 1, 0]);
+
+        logActivity('create', 'duty_buildings', (int)$pdo->lastInsertId(), null, [
+          'building_name' => $name,
+          'is_active' => 1,
+          'sort_order' => 0,
+        ]);
         flash_set('success', 'เพิ่มอาคารแล้ว');
         redirect('buildings.php');
       } elseif ($action === 'update') {
@@ -29,15 +36,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim((string)($_POST['building_name'] ?? ''));
         if ($id <= 0) throw new Exception('ไม่พบ ID');
         if ($name === '') throw new Exception('กรุณากรอกชื่ออาคาร');
+        $old = $pdo->prepare('SELECT * FROM duty_buildings WHERE id=?');
+        $old->execute([$id]);
+        $oldRow = $old->fetch();
+
         $st = $pdo->prepare('UPDATE duty_buildings SET building_name=? WHERE id=?');
         $st->execute([$name, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['building_name'] = $name;
+          logUpdate('duty_buildings', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'แก้ไขแล้ว');
         redirect('buildings.php');
       } elseif ($action === 'toggle') {
         $id = (int)($_POST['id'] ?? 0);
         $enabled = (int)($_POST['enabled'] ?? 0) ? 1 : 0;
+
+        $old = $pdo->prepare('SELECT * FROM duty_buildings WHERE id=?');
+        $old->execute([$id]);
+        $oldRow = $old->fetch();
+
         $st = $pdo->prepare('UPDATE duty_buildings SET is_active=? WHERE id=?');
         $st->execute([$enabled, $id]);
+
+        if ($oldRow) {
+          $newRow = $oldRow;
+          $newRow['is_active'] = $enabled;
+          logUpdate('duty_buildings', $id, $oldRow, $newRow);
+        }
         flash_set('success', 'บันทึกแล้ว');
         redirect('buildings.php');
       } elseif ($action === 'delete') {
@@ -53,8 +81,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cnt2->execute([$id]);
         if ((int)$cnt2->fetchColumn() > 0) throw new Exception('ลบไม่ได้: มีครูที่ผูกกับอาคารนี้');
 
+        $old = $pdo->prepare('SELECT * FROM duty_buildings WHERE id=?');
+        $old->execute([$id]);
+        $oldRow = $old->fetch();
+
         $del = $pdo->prepare('DELETE FROM duty_buildings WHERE id=?');
         $del->execute([$id]);
+
+        if ($oldRow) {
+          logDelete('duty_buildings', $id, $oldRow);
+        }
         flash_set('success', 'ลบแล้ว');
         redirect('buildings.php');
       }

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 
 requireLogin();
 requireAdmin();
@@ -34,6 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtU->execute([$year_label, $set_active, $id]);
 
         $pdo->commit();
+
+        $oldData = $year;
+        $newData = $year;
+        $newData['year_label'] = $year_label;
+        $newData['is_active'] = $set_active;
+        logUpdate('academic_years', $id, $oldData, $newData);
         flash_set('success', 'อัปเดตปีการศึกษาเรียบร้อย');
         redirect('years.php');
       } catch (Throwable $e) {

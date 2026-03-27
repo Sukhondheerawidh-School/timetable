@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $id = (int)($_GET['id'] ?? 0);
@@ -28,6 +29,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
         $up=$pdo->prepare('UPDATE period_slots SET period_no=?, start_time=?, end_time=? WHERE id=?');
         $up->execute([$no,$st,$et,$id]);
+
+        $oldData = $row;
+        $newData = $row;
+        $newData['period_no'] = $no;
+        $newData['start_time'] = $st;
+        $newData['end_time'] = $et;
+        logUpdate('period_slots', $id, $oldData, $newData);
         flash_set('success','อัปเดตคาบสำเร็จ');
         redirect('periods.php');
       }catch(Throwable $e){ $err='ผิดพลาด: '.$e->getMessage(); }

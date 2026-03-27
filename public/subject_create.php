@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $err = '';
@@ -15,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       try {
         $stmt = $pdo->prepare('INSERT INTO subjects(subject_code, subject_name) VALUES (?,?)');
         $stmt->execute([$code,$name]);
+
+        logCreate('subjects', (int)$pdo->lastInsertId(), [
+          'subject_code' => $code,
+          'subject_name' => $name,
+        ]);
         flash_set('success','เพิ่มรายวิชาสำเร็จ');
         redirect('subjects.php');
       } catch (Throwable $e) {

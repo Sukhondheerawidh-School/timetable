@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $id = (int)($_GET['id'] ?? 0);
@@ -25,6 +26,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       try {
         $stmtU = $pdo->prepare('UPDATE rooms SET room_code=?, room_name=?, building=?, room_type=? WHERE id=?');
         $stmtU->execute([$code, $name, $building, $type, $id]);
+
+        $oldData = $room;
+        $newData = $room;
+        $newData['room_code'] = $code;
+        $newData['room_name'] = $name;
+        $newData['building'] = $building;
+        $newData['room_type'] = $type;
+        logUpdate('rooms', $id, $oldData, $newData);
         flash_set('success','อัปเดตข้อมูลห้องสำเร็จ');
         redirect('rooms.php');
       } catch (Throwable $e) {

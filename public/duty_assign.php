@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -106,8 +107,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           if ($busyCons->fetchColumn()) throw new Exception('ครูคนนี้ติดข้อจำกัดช่วงเวลานี้');
         }
 
-  $ins = $pdo->prepare('INSERT INTO duty_term_assignments(academic_year_id, term_no, duty_master_shift_id, teacher_id) VALUES (?,?,?,?)');
-  $ins->execute([$year_id, $term_no, $shift_id, $teacher_id]);
+        $ins = $pdo->prepare('INSERT INTO duty_term_assignments(academic_year_id, term_no, duty_master_shift_id, teacher_id) VALUES (?,?,?,?)');
+        $ins->execute([$year_id, $term_no, $shift_id, $teacher_id]);
+
+        logActivity('duty_assign', 'duty_term_assignments', (int)$pdo->lastInsertId(), null, [
+          'academic_year_id' => $year_id,
+          'term_no' => $term_no,
+          'duty_master_shift_id' => $shift_id,
+          'teacher_id' => $teacher_id,
+          'building_id' => $building_id,
+        ]);
 
         flash_set('success', 'จัดเวรแล้ว');
         $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
@@ -115,8 +124,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } elseif ($action === 'unassign') {
         $id = (int)($_POST['id'] ?? 0);
         $returnShiftId = (int)($_POST['return_shift_id'] ?? 0);
+
+        $oldStmt = $pdo->prepare('SELECT id, academic_year_id, term_no, duty_master_shift_id, teacher_id FROM duty_term_assignments WHERE id=? AND academic_year_id=? AND term_no=?');
+        $oldStmt->execute([$id, $year_id, $term_no]);
+        $oldRow = $oldStmt->fetch();
+
         $del = $pdo->prepare('DELETE FROM duty_term_assignments WHERE id=? AND academic_year_id=? AND term_no=?');
         $del->execute([$id, $year_id, $term_no]);
+
+        if ($oldRow) {
+          logActivity('duty_unassign', 'duty_term_assignments', (int)$oldRow['id'], $oldRow, null);
+        }
         flash_set('success', 'ลบแล้ว');
         $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
         redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').$anchor);

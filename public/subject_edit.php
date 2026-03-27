@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin(); requireAdmin();
 
 $id = (int)($_GET['id'] ?? 0);
@@ -26,6 +27,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
         $up = $pdo->prepare('UPDATE subjects SET subject_code=?, subject_name=? WHERE id=?');
         $up->execute([$code,$name,$id]);
+
+        $oldData = $subject;
+        $newData = $subject;
+        $newData['subject_code'] = $code;
+        $newData['subject_name'] = $name;
+        logUpdate('subjects', $id, $oldData, $newData);
         flash_set('success','อัปเดตรายวิชาสำเร็จ');
         redirect('subjects.php');
       } catch (Throwable $e) {

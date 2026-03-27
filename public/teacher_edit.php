@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
@@ -38,6 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtU->execute([$code, $title, $first, $last, $group, $id]);
 
         tt_teacher_buildings_set($pdo, $id, $buildingIds);
+
+        $oldData = $teacher;
+        $oldData['building_ids'] = $currentBuildingIds;
+        $newData = $teacher;
+        $newData['teacher_code'] = $code;
+        $newData['title'] = $title;
+        $newData['first_name'] = $first;
+        $newData['last_name'] = $last;
+        $newData['subject_group'] = $group;
+        $newData['building_ids'] = $buildingIds;
+        logUpdate('teachers', $id, $oldData, $newData);
 
         flash_set('success', 'อัปเดตข้อมูลครูสำเร็จ');
         redirect('teachers.php');
