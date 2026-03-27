@@ -600,12 +600,20 @@ $scoreSlot = function(int $cid, int $tid, string $subj, int $day, int $period, b
   return $score;
 };
 
+// ✅ บังคับเงื่อนไข: วิชาเดียวกัน + ครูคนเดิม (รวม co-teaching) ห้ามซ้ำในวันเดียวกัน (ต่อห้อง)
+$hasSameSubjectTeacherToday = function(int $day, int $classId, string $subjectLabel, array $teacherIds) use (&$maps): bool {
+  foreach ($teacherIds as $tid) {
+    if (isset($maps['subjectTeacherDay'][$day][$classId][$subjectLabel][(int)$tid])) return true;
+  }
+  return false;
+};
+
 // ✅ บังคับเงื่อนไข: วิชาเดิมของห้องเดียวกันห้ามลงซ้ำในวันเดียวกัน
 // (ยกเลิกโหมดผ่อนคลายในรอบสุดท้าย เพื่อไม่ให้เกิดวิชาซ้ำวันเดียวกัน)
 $RELAX_SUBJECT_DAY_ON_LAST_PASS = false;
 
-// ✅ บังคับเงื่อนไข: วิชาเรียนติดกันได้สูงสุด 2 คาบ
-$MAX_CONSECUTIVE_SLOTS = 2;
+// ✅ บังคับเงื่อนไข: วิชาเรียนติดกันได้สูงสุด 1 คาบ (เพื่อกันซ้ำวันเดียวกัน)
+$MAX_CONSECUTIVE_SLOTS = 1;
 
 // ✅ Repair phase: เปิดเพื่อเพิ่มโอกาสสำเร็จ โดยย้ายคาบ auto ที่ขวางอยู่ (จำกัดขอบเขต)
 $ENABLE_REPAIR = true;
@@ -626,7 +634,8 @@ $estimateFeasibleCount = function(array $L, int $passNo, int $maxPasses) use (
   &$classes,
   &$teachers,
   $RELAX_SUBJECT_DAY_ON_LAST_PASS,
-  $MAX_CONSECUTIVE_SLOTS
+  $MAX_CONSECUTIVE_SLOTS,
+  $hasSameSubjectTeacherToday
 ) {
   $tids = $coTeachers($L);
   $room_id = !empty($L['room_id']) ? (int)$L['room_id'] : null;
@@ -673,11 +682,8 @@ $estimateFeasibleCount = function(array $L, int $passNo, int $maxPasses) use (
       }
 
       $hasSameSubjectToday = isset($maps['subjectDay'][$d][(int)$L['class_id']][$L['label']]);
-      if ($hasSameSubjectToday) {
-        $isLastPass = ($passNo === $maxPasses);
-        if (!($isLastPass && $RELAX_SUBJECT_DAY_ON_LAST_PASS)) {
-          continue;
-        }
+      if ($hasSameSubjectTeacherToday((int)$d, (int)$L['class_id'], (string)$L['label'], $tids)) {
+        continue;
       }
 
       $count++;
@@ -813,12 +819,9 @@ try{
             if($conf){ $why=$whyT; continue; }
 
             $hasSameSubjectToday = isset($maps['subjectDay'][$d][(int)$L['class_id']][$L['label']]);
-            if ($hasSameSubjectToday) {
-              $isLastPass = ($passCount === $MAX_PASSES);
-              if (!($isLastPass && $RELAX_SUBJECT_DAY_ON_LAST_PASS)) {
-                $why='วิชาเดียวกันวันนี้แล้ว';
-                continue;
-              }
+            if ($hasSameSubjectTeacherToday((int)$d, (int)$L['class_id'], (string)$L['label'], $tids)) {
+              $why='วิชา+ครูซ้ำวันเดียวกัน';
+              continue;
             }
 
             $score = $scoreSlot((int)$L['class_id'], (int)$L['teacher_id'], $L['label'], $d, $p, $hasSameSubjectToday);
@@ -960,7 +963,8 @@ try{
       $violatesCross,
       $RELAX_SUBJECT_DAY_ON_LAST_PASS,
       $REPAIR_MAX_BLOCKER_TRIES,
-      &$classes
+      &$classes,
+      $hasSameSubjectTeacherToday
     ) {
       $cid = (int)$slotRow['class_id'];
       $roomId = !empty($slotRow['room_id']) ? (int)$slotRow['room_id'] : null;
@@ -973,46 +977,42 @@ try{
       $periodsToTry = array_map('intval', $periods);
       shuffle($periodsToTry);
 
-      // 2 รอบ: strict subjectDay ก่อน แล้วค่อยผ่อนคลาย (โทษคะแนนไม่ได้ใช้ที่นี่ แต่ยอมเพื่อให้ลงครบ)
-      for ($phase=1; $phase<=2; $phase++) {
-        $tries = 0;
-        foreach ($days as $d) {
-          foreach ($periodsToTry as $p) {
-            $tries++;
-            if ($tries > $REPAIR_MAX_BLOCKER_TRIES) break 2;
+      $tries = 0;
+      foreach ($days as $d) {
+        foreach ($periodsToTry as $p) {
+          $tries++;
+          if ($tries > $REPAIR_MAX_BLOCKER_TRIES) break 2;
 
-            // หลีกเลี่ยงที่เดิม
-            if ($d === (int)$slotRow['day_of_week'] && $p === (int)$slotRow['period_no']) continue;
-            if (in_array($p, $breaks, true)) continue;
-            if ($roomId && isset($maps['roomBusy'][$d][$p][$roomId])) continue;
-            if (isset($maps['classBusy'][$d][$p][$cid])) continue;
-            if (isset($maps['classActivity'][$d][$p][$cid])) continue;
+          // หลีกเลี่ยงที่เดิม
+          if ($d === (int)$slotRow['day_of_week'] && $p === (int)$slotRow['period_no']) continue;
+          if (in_array($p, $breaks, true)) continue;
+          if ($roomId && isset($maps['roomBusy'][$d][$p][$roomId])) continue;
+          if (isset($maps['classBusy'][$d][$p][$cid])) continue;
+          if (isset($maps['classActivity'][$d][$p][$cid])) continue;
 
-            // subject day constraint (strict ก่อน)
-            $hasSame = isset($maps['subjectDay'][$d][$cid][$subj]);
-            if ($hasSame && $phase === 1) continue;
+          // subject+teacher per-day constraint (strict)
+          if ($hasSameSubjectTeacherToday((int)$d, (int)$cid, (string)$subj, $slotTeacherIds)) continue;
 
-            // teacher constraints + busy + activity
-            foreach ($slotTeacherIds as $tid) {
-              if (isset($maps['teacherConstraints'][$tid])) {
-                $c = $maps['teacherConstraints'][$tid];
-                if (in_array($d, $c['unavailable_days'] ?? [], true)) continue 2;
-                if (in_array($p, $c['unavailable_periods'] ?? [], true)) continue 2;
-                if (isset($c['unavailable_slots'][$d][$p])) continue 2;
-              }
-              if (isset($maps['teacherBusy'][$d][$p][$tid])) continue 2;
-              if (isset($maps['teacherActivity'][$d][$p][$tid])) continue 2;
+          // teacher constraints + busy + activity
+          foreach ($slotTeacherIds as $tid) {
+            if (isset($maps['teacherConstraints'][$tid])) {
+              $c = $maps['teacherConstraints'][$tid];
+              if (in_array($d, $c['unavailable_days'] ?? [], true)) continue 2;
+              if (in_array($p, $c['unavailable_periods'] ?? [], true)) continue 2;
+              if (isset($c['unavailable_slots'][$d][$p])) continue 2;
             }
-
-            $periodsToCheck = [$p];
-            foreach ($slotTeacherIds as $tid) {
-              if ($violatesConsec($tid, $d, $periodsToCheck)) continue 2;
-              if ($violatesLunch($tid, $d, $periodsToCheck)) continue 2;
-              if ($violatesCross($tid, $d, $p, $grade)) continue 2;
-            }
-
-            return ['day' => (int)$d, 'period' => (int)$p];
+            if (isset($maps['teacherBusy'][$d][$p][$tid])) continue 2;
+            if (isset($maps['teacherActivity'][$d][$p][$tid])) continue 2;
           }
+
+          $periodsToCheck = [$p];
+          foreach ($slotTeacherIds as $tid) {
+            if ($violatesConsec($tid, $d, $periodsToCheck)) continue 2;
+            if ($violatesLunch($tid, $d, $periodsToCheck)) continue 2;
+            if ($violatesCross($tid, $d, $p, $grade)) continue 2;
+          }
+
+          return ['day' => (int)$d, 'period' => (int)$p];
         }
       }
 
@@ -1087,8 +1087,10 @@ try{
             }
             if ($conf) continue;
 
+            // ห้ามซ้ำวันเดียวกัน (วิชา+ครู)
+            if ($hasSameSubjectTeacherToday((int)$d, (int)$L['class_id'], (string)$L['label'], $tids)) continue;
+
             $hasSameSubjectToday = isset($maps['subjectDay'][$d][(int)$L['class_id']][$L['label']]);
-            if ($hasSameSubjectToday && !$RELAX_SUBJECT_DAY_ON_LAST_PASS) continue;
 
             // หา blocker (ถ้ามี) เฉพาะ auto 1 ตัว
             [$blockerId, $hardBlock] = $getBlockingAutoSlotId((int)$d, (int)$p, (int)$L['class_id'], $tids, $room_id);

@@ -21,10 +21,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     if ($username === '' || $password === '') {
       $err = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน';
-    } elseif (login($username, $password)) {
-      redirect('index.php');
     } else {
-      $err = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+      $ok = login($username, $password);
+      if ($ok === true) {
+        redirect('index.php');
+      } elseif ($ok === null) {
+        $err = 'เชื่อมต่อฐานข้อมูลไม่ได้ (MySQL อาจหยุดทำงาน) กรุณาตรวจสอบ XAMPP MySQL แล้วลองใหม่';
+      } else {
+        $err = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+      }
     }
   }
 }

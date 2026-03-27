@@ -58,6 +58,9 @@ $class_id      = $_GET['class_id'] ?? 'all';
 $room_id       = $_GET['room_id'] ?? 'all';
 $teacher_group = $_GET['teacher_group'] ?? 'all';
 $teacher_id    = $_GET['teacher_id'] ?? 'all';
+$only_has_timetable = !empty($_GET['only_has_timetable']);
+$only_has_timetable_class = !empty($_GET['only_has_timetable_class']);
+$only_has_timetable_room  = !empty($_GET['only_has_timetable_room']);
 $school_name   = $_GET['school_name'] ?? '';
 if ($school_name === '') $school_name = 'โรงเรียนสุคนธีรวิทย์';
 $printed_at    = $_GET['printed_at'] ?? date('Y-m-d');
@@ -321,6 +324,39 @@ $classById=[]; foreach($classes as $c){ $classById[$c['id']]=$c; }
 $teachers = $pdo->query("SELECT id,first_name,last_name,subject_group,teacher_code 
                          FROM teachers 
                          ORDER BY subject_group, teacher_code, first_name, last_name")->fetchAll(PDO::FETCH_ASSOC);
+
+// ✅ Map: ครูที่มีคาบในตารางสอน (ตามปี/เทอม)
+$teacherHasTimetable = [];
+// ✅ Map: ห้องเรียน (class) ที่มีคาบในตารางสอน (ตามปี/เทอม)
+$classHasTimetable = [];
+// ✅ Map: ห้องเรียนจริง (room) ที่มีคาบในตารางสอน (ตามปี/เทอม)
+$roomHasTimetable = [];
+if ($year_id > 0 && in_array((int)$term_no, [1, 2], true)) {
+  $st = $pdo->prepare("
+    SELECT DISTINCT COALESCE(tst.teacher_id, ts.teacher_id) AS teacher_id
+    FROM timetable_slots ts
+    LEFT JOIN timetable_slot_teachers tst ON tst.slot_id = ts.id
+    WHERE ts.academic_year_id = ?
+      AND ts.term_no = ?
+      AND COALESCE(tst.teacher_id, ts.teacher_id) IS NOT NULL
+  ");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $tid) {
+    $teacherHasTimetable[(int)$tid] = true;
+  }
+
+  $st = $pdo->prepare("SELECT DISTINCT class_id FROM timetable_slots WHERE academic_year_id=? AND term_no=? AND class_id IS NOT NULL");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $cid) {
+    $classHasTimetable[(int)$cid] = true;
+  }
+
+  $st = $pdo->prepare("SELECT DISTINCT room_id FROM timetable_slots WHERE academic_year_id=? AND term_no=? AND room_id IS NOT NULL");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) {
+    $roomHasTimetable[(int)$rid] = true;
+  }
+}
 
 // ดึงกลุ่มสาระจากฐานข้อมูล
 $groupMap = teacher_group_options(false); // รวมทั้งที่ปิดและเปิด
@@ -685,6 +721,7 @@ $pages=[];
 if ($view==='class'){
   if ($class_id==='all'){
     foreach($classes as $c){
+      if ($only_has_timetable_class && empty($classHasTimetable[(int)$c['id']])) continue;
       $weekdays = getClassWeekdays($pdo, $c['id']);
       $grid = gridByClass($pdo,$year_id,$term_no,$c['id']);
       $merged = detectConsecutiveSlots($grid, $periods, $weekdays);
@@ -713,11 +750,12 @@ if ($view==='class'){
 } elseif ($view==='teacher') {
   $list=[];
   foreach($teachers as $t){
+    if ($only_has_timetable && empty($teacherHasTimetable[(int)$t['id']])) continue;
     if($teacher_group!=='all' && (string)$t['subject_group']!==(string)$teacher_group) continue;
     if($teacher_id!=='all' && (string)$teacher_id!==(string)$t['id']) continue;
     $list[]=$t;
   }
-  if(!$list) $list=$teachers;
+  if(!$list && !$only_has_timetable) $list=$teachers;
 
   foreach($list as $t){
     $gid = $t['subject_group'] ?? null;
@@ -737,6 +775,7 @@ if ($view==='class'){
 } elseif ($view==='room') {
   if ($room_id === 'all') {
     foreach($rooms as $r){
+      if ($only_has_timetable_room && empty($roomHasTimetable[(int)$r['id']])) continue;
       $weekdays = [1, 2, 3, 4, 5]; // ห้องเรียนใช้แค่จันทร์-ศุกร์
       $grid = gridByRoom($pdo,$year_id,$term_no,$r['id']);
       $merged = detectConsecutiveSlots($grid, $periods, $weekdays);
@@ -1506,11 +1545,19 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           <select name="class_id" id="f_class" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
             <option value="all" <?= $class_id==='all'?'selected':''; ?>>— ทุกห้อง —</option>
             <?php foreach($classes as $c): ?>
+              if ($only_has_timetable_class && empty($classHasTimetable[(int)$c['id']]) && (string)$class_id!==(string)$c['id']) continue; ?>
             <option value="<?= (int)$c['id'] ?>" <?= (string)$class_id===(string)$c['id']?'selected':''; ?>>
               <?= h($c['class_name']) ?>
             </option>
             <?php endforeach; ?>
           </select>
+        </div>
+
+        <div class="flex items-center">
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+            <input type="checkbox" name="only_has_timetable_class" id="f_only_has_timetable_class" value="1" <?= $only_has_timetable_class?'checked':''; ?>>
+            เลือกเฉพาะห้องที่มีตารางสอน
+          </label>
         </div>
 
       <?php elseif($view==='teacher'): ?>
@@ -1531,6 +1578,7 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           <select name="teacher_id" id="f_teacher" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
             <option value="all" <?= $teacher_id==='all'?'selected':''; ?>>— ทุกคน —</option>
             <?php foreach($teachers as $t):
+              if($only_has_timetable && empty($teacherHasTimetable[(int)$t['id']])) continue;
               if($teacher_group!=='all' && (string)$t['subject_group']!==(string)$teacher_group) continue; ?>
             <option value="<?= (int)$t['id'] ?>" <?= (string)$teacher_id===(string)$t['id']?'selected':''; ?>>
               <?= h($t['first_name'].' '.$t['last_name']) ?>
@@ -1539,17 +1587,32 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           </select>
         </div>
 
+        <div class="flex items-center">
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+            <input type="checkbox" name="only_has_timetable" id="f_only_has_timetable" value="1" <?= $only_has_timetable?'checked':''; ?>>
+            เลือกเฉพาะครูที่มีตารางสอน
+          </label>
+        </div>
+
       <?php elseif($view==='room'): ?>
         <div class="md:col-span-2">
           <label class="text-sm text-slate-600">เลือกห้อง</label>
           <select name="room_id" id="f_room" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
             <option value="all" <?= ($_GET['room_id']??'all')==='all'?'selected':''; ?>>— ทุกห้อง —</option>
-            <?php foreach($rooms as $r): ?>
+            <?php foreach($rooms as $r):
+              if ($only_has_timetable_room && empty($roomHasTimetable[(int)$r['id']]) && (string)($_GET['room_id']??'all')!==(string)$r['id']) continue; ?>
             <option value="<?= (int)$r['id'] ?>" <?= (string)($_GET['room_id']??'all')===(string)$r['id']?'selected':''; ?>>
               <?= h($r['room_name']) ?>
             </option>
             <?php endforeach; ?>
           </select>
+        </div>
+
+        <div class="flex items-center">
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+            <input type="checkbox" name="only_has_timetable_room" id="f_only_has_timetable_room" value="1" <?= $only_has_timetable_room?'checked':''; ?>>
+            เลือกเฉพาะห้องเรียนที่มีตารางใช้ห้อง
+          </label>
         </div>
       <?php endif; ?>
 

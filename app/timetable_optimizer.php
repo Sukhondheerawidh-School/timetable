@@ -5,7 +5,9 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
   // ✅ ดึงข้อมูลทั้งหมดมาทำ Map
   $existingSlots = $pdo->prepare("
     SELECT ts.day_of_week, ts.period_no, ts.class_id, ts.room_id,
-           st.teacher_id, ts.subject_name
+           ts.teacher_id AS primary_teacher_id,
+           st.teacher_id AS map_teacher_id,
+           ts.subject_name
     FROM timetable_slots ts
     LEFT JOIN timetable_slot_teachers st ON st.slot_id = ts.id
     WHERE ts.academic_year_id = ? AND ts.term_no = ?
@@ -16,19 +18,21 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
   $teacherBusyMap = [];
   $roomBusyMap = [];
   $subjectDayMap = [];
+  $subjectTeacherDayMap = [];
 
   foreach ($existingSlots->fetchAll() as $slot) {
     $d = (int)$slot['day_of_week'];
     $p = (int)$slot['period_no'];
     $cid = (int)$slot['class_id'];
     $rid = $slot['room_id'] ? (int)$slot['room_id'] : null;
-    $tid = $slot['teacher_id'] ? (int)$slot['teacher_id'] : null;
+    $tid = $slot['map_teacher_id'] ? (int)$slot['map_teacher_id'] : ($slot['primary_teacher_id'] ? (int)$slot['primary_teacher_id'] : null);
     $subj = $slot['subject_name'];
     
     $classBusyMap[$d][$p][$cid] = true;
     if ($rid) $roomBusyMap[$d][$p][$rid] = true;
     if ($tid) $teacherBusyMap[$d][$p][$tid] = true;
     if ($subj) $subjectDayMap[$d][$cid][$subj] = true;
+    if ($subj && $tid) $subjectTeacherDayMap[$d][$cid][$subj][$tid] = true;
   }
 
   // ✅ ดึงกิจกรรมทั้งหมด
@@ -97,6 +101,7 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
     'teacherBusy' => $teacherBusyMap,
     'roomBusy' => $roomBusyMap,
     'subjectDay' => $subjectDayMap,
+    'subjectTeacherDay' => $subjectTeacherDayMap,
     'classActivity' => $classActivityMap,
     'teacherActivity' => $teacherActivityMap,
     'teacherConstraints' => $teacherConstraints
@@ -115,4 +120,8 @@ function updateMapsAfterInsert(&$maps, $day, $period, $class_id, $teacher_ids, $
   }
   
   $maps['subjectDay'][$day][$class_id][$subject_name] = true;
+
+  foreach ($teacher_ids as $tid) {
+    $maps['subjectTeacherDay'][$day][$class_id][$subject_name][(int)$tid] = true;
+  }
 }

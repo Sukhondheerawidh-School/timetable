@@ -1002,7 +1002,7 @@ $reportHtml = buildReportHTML(
 ---------------------------*/
 if ($export==='print'){
   $title = 'พิมพ์รายงานตารางสอน';
-  $favicon = '/timetable/favicon.ico?v='.(string)time();
+  $favicon = url('favicon.ico?v='.(string)time());
   echo '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">';
   echo '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
   echo '<title>'.h($title).'</title>';

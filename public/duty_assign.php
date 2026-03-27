@@ -47,6 +47,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $teacher_id = (int)($_POST['teacher_id'] ?? 0);
         if (!$shift_id || !$teacher_id) throw new Exception('เลือกเวร/ครูให้ครบ');
 
+        $returnShiftId = (int)($_POST['return_shift_id'] ?? $shift_id);
+
         // Exclusions
         $exChk = $pdo->prepare('SELECT 1 FROM duty_term_exclusions WHERE academic_year_id=? AND term_no=? AND teacher_id=? LIMIT 1');
         $exChk->execute([$year_id, $term_no, $teacher_id]);
@@ -108,13 +110,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $ins->execute([$year_id, $term_no, $shift_id, $teacher_id]);
 
         flash_set('success', 'จัดเวรแล้ว');
-        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:''));
+        $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
+        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').$anchor);
       } elseif ($action === 'unassign') {
         $id = (int)($_POST['id'] ?? 0);
+        $returnShiftId = (int)($_POST['return_shift_id'] ?? 0);
         $del = $pdo->prepare('DELETE FROM duty_term_assignments WHERE id=? AND academic_year_id=? AND term_no=?');
         $del->execute([$id, $year_id, $term_no]);
         flash_set('success', 'ลบแล้ว');
-        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:''));
+        $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
+        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').$anchor);
       }
     } catch (Throwable $e) {
       $err = 'ผิดพลาด: '.$e->getMessage();
@@ -138,6 +143,7 @@ $shiftsSql = 'SELECT ms.id, ms.day_of_week, ms.required_count,
   JOIN duty_master_time_slots dts ON dts.id=ms.duty_time_slot_id
   JOIN duty_master_posts dp ON dp.id=ms.duty_post_id
   WHERE ms.is_active=1 AND dts.is_active=1 AND dp.is_active=1
+    AND ms.day_of_week BETWEEN 1 AND 5
   ';
 if ($building_id > 0) {
   // strict: only shifts whose post belongs to selected building
@@ -247,6 +253,7 @@ $busyDutyStmt = $pdo->prepare('SELECT ms.day_of_week, ms.duty_time_slot_id AS sl
   FROM duty_term_assignments ta
   JOIN duty_master_shifts ms ON ms.id=ta.duty_master_shift_id
   WHERE ta.academic_year_id=? AND ta.term_no=?
+    AND ms.day_of_week BETWEEN 1 AND 5
     AND NOT EXISTS (
       SELECT 1 FROM duty_term_exclusions e
       WHERE e.academic_year_id=ta.academic_year_id AND e.term_no=ta.term_no AND e.teacher_id=ta.teacher_id
@@ -300,7 +307,8 @@ $progressPct = $totalNeed > 0 ? (int)round(($totalFilled / $totalNeed) * 100) : 
 include __DIR__ . '/../partials/head.php';
 include __DIR__ . '/../partials/navbar.php';
 ?>
-<div class="max-w-7xl mx-auto px-4 mt-8">
+<div class="w-full px-4 mt-8">
+  <div class="max-w-7xl mx-auto">
   <div class="mb-3">
     <h1 class="text-xl font-semibold">🧑‍🏫 จัดเวรครู (รายเทอม)</h1>
   </div>
@@ -386,29 +394,46 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
   </div>
 
+    </div>
+
   <div class="bg-white rounded-2xl shadow overflow-hidden">
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm border-separate border-spacing-0">
         <thead class="bg-slate-50 sticky top-0 z-10">
           <tr>
             <th class="text-left px-3 py-2 sticky left-0 z-20 bg-slate-50">ช่วงเวลา</th>
-            <?php for($d=1;$d<=7;$d++): ?>
-              <?php $isWeekend = $d >= 6; ?>
-              <th class="text-left px-3 py-2 <?= $isWeekend ? 'bg-slate-100' : '' ?>"><?= tt_dow_label($d) ?></th>
+            <?php for($d=1;$d<=5;$d++): ?>
+              <th class="text-left px-3 py-2"><?= tt_dow_label($d) ?></th>
             <?php endfor; ?>
           </tr>
         </thead>
         <tbody>
+          <?php
+            $slotPalette = ['bg-sky-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500', 'bg-indigo-500', 'bg-slate-500'];
+            $slotPaletteSoft = ['bg-sky-500/60', 'bg-emerald-500/60', 'bg-amber-500/60', 'bg-violet-500/60', 'bg-rose-500/60', 'bg-indigo-500/60', 'bg-slate-500/60'];
+            $slotRowIndex = 0;
+          ?>
           <?php foreach ($slots as $slot): ?>
             <?php $slotId = (int)$slot['id']; $pno = $slot['period_no']===null? null : (int)$slot['period_no']; ?>
+            <?php
+              $slotRowIndex++;
+              $barClass = $slotPalette[($slotRowIndex - 1) % count($slotPalette)];
+              $barSoftClass = $slotPaletteSoft[($slotRowIndex - 1) % count($slotPaletteSoft)];
+            ?>
             <tr class="border-t align-top">
               <td class="px-3 py-2 whitespace-nowrap sticky left-0 bg-white z-10 border-r">
-                <div class="font-medium"><?= htmlspecialchars($slot['slot_label']); ?></div>
-                <div class="text-xs text-slate-500"><?= htmlspecialchars(substr((string)$slot['start_time'],0,5)); ?>–<?= htmlspecialchars(substr((string)$slot['end_time'],0,5)); ?><?= $pno===null? '' : ' · คาบ '.$pno; ?></div>
+                <div class="flex items-start gap-2">
+                  <div class="w-2 h-10 rounded-full <?= $barClass ?> flex-shrink-0 mt-0.5" aria-hidden="true"></div>
+                  <div>
+                    <div class="h-1 w-full rounded <?= $barSoftClass ?> mb-2" aria-hidden="true"></div>
+                    <div class="font-medium"><?= htmlspecialchars($slot['slot_label']); ?></div>
+                    <div class="text-xs text-slate-500"><?= htmlspecialchars(substr((string)$slot['start_time'],0,5)); ?>–<?= htmlspecialchars(substr((string)$slot['end_time'],0,5)); ?><?= $pno===null? '' : ' · คาบ '.$pno; ?></div>
+                  </div>
+                </div>
               </td>
-              <?php for($day=1;$day<=7;$day++): ?>
-                <?php $isWeekend = $day >= 6; ?>
-                <td class="px-3 py-2 min-w-[230px] <?= $isWeekend ? 'bg-slate-50/40' : '' ?>">
+              <?php for($day=1;$day<=5;$day++): ?>
+                <td class="px-3 py-2 min-w-[230px]">
+                  <div class="h-1 w-full rounded <?= $barSoftClass ?> mb-2" aria-hidden="true"></div>
                   <?php $cellShifts = $shiftByCell[$day][$slotId] ?? []; ?>
                   <?php if (!$cellShifts): ?>
                     <div class="text-xs text-slate-400">—</div>
@@ -476,7 +501,7 @@ include __DIR__ . '/../partials/navbar.php';
                           });
                           $sortedTeachers = $scored;
                         ?>
-                        <div class="rounded-xl p-3 border <?= $shiftBg; ?>">
+                        <div id="shift-<?= (int)$shiftId; ?>" class="rounded-xl p-3 border <?= $shiftBg; ?>">
                           <div class="flex items-start justify-between gap-2">
                             <div>
                               <div class="font-medium"><?= htmlspecialchars($sh['post_name']); ?></div>
@@ -500,6 +525,7 @@ include __DIR__ . '/../partials/navbar.php';
                                     <input type="hidden" name="year_id" value="<?= (int)$year_id; ?>">
                                     <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
                                     <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
+                                    <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
                                     <input type="hidden" name="id" value="<?= (int)$a['id']; ?>">
                                     <button class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
                                   </form>
@@ -516,6 +542,7 @@ include __DIR__ . '/../partials/navbar.php';
                               <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
                               <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
                               <input type="hidden" name="shift_id" value="<?= (int)$shiftId; ?>">
+                              <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
 
                               <div class="flex-1">
                                 <select name="teacher_id" class="w-full border rounded px-2 py-1" required>

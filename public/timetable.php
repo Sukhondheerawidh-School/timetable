@@ -261,19 +261,28 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $chkActC->execute([$year_id,$term_no,$day,$period_no,$class_of]); 
         if ($chkActC->fetch()) throw new Exception('ทับกิจกรรมรวมของชั้น');
 
-        // ✅ **แก้ไข: เช็ควิชาซ้ำในวันเดียวกัน - ถ้าไม่ force ให้ส่งกลับไปยืนยัน**
-        $chkSameSubjToday = $pdo->prepare("
+        // ✅ เช็ควิชา+ครูซ้ำในวันเดียวกัน (ถ้าครูคนละคน ไม่ถือว่าซ้ำ)
+        // รวม co-teaching: ถ้าครูคนใดคนหนึ่งในชุดครูของ load นี้ซ้ำ จะถือว่าซ้ำ
+        $inTeachers = implode(',', array_fill(0, count($teacher_ids), '?'));
+        $chkSameSubjTeacherToday = $pdo->prepare("
           SELECT 1
           FROM timetable_slots ts
-          WHERE ts.academic_year_id=? 
-            AND ts.term_no=? 
-            AND ts.day_of_week=? 
-            AND ts.class_id=? 
+          LEFT JOIN timetable_slot_teachers st ON st.slot_id = ts.id
+          WHERE ts.academic_year_id=?
+            AND ts.term_no=?
+            AND ts.day_of_week=?
+            AND ts.class_id=?
             AND ts.subject_name=?
+            AND (
+              ts.teacher_id IN ($inTeachers)
+              OR st.teacher_id IN ($inTeachers)
+            )
           LIMIT 1
         ");
-        $chkSameSubjToday->execute([$year_id, $term_no, $day, $class_of, $subject]);
-        if ($chkSameSubjToday->fetch() && !$force_add) {
+        $params = array_merge([$year_id, $term_no, $day, $class_of, $subject], $teacher_ids, $teacher_ids);
+        $chkSameSubjTeacherToday->execute($params);
+
+        if ($chkSameSubjTeacherToday->fetch() && !$force_add) {
           // ✅ ส่งข้อมูลกลับไปให้ JavaScript แสดง confirm
           $_SESSION['confirm_add_data'] = [
             'load_id' => $load_id,

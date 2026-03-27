@@ -30,20 +30,35 @@ function checkSessionTimeout() {
 
 function login($username, $password) {
   global $pdo;
-  $stmt = $pdo->prepare('SELECT * FROM users WHERE username = ? LIMIT 1');
-  $stmt->execute([$username]);
-  $user = $stmt->fetch();
-  if ($user && password_verify($password, $user['password_hash'])) {
-    session_regenerate_id(true);
-    $_SESSION['user'] = [
-      'id'       => $user['id'],
-      'username' => $user['username'],
-      'role'     => $user['role'],
-    ];
-    $_SESSION['LAST_ACTIVITY'] = time(); // เพิ่มบรรทัดนี้
-    return true;
+  $retried = false;
+
+  while (true) {
+    try {
+      $stmt = $pdo->prepare('SELECT * FROM users WHERE username = ? LIMIT 1');
+      $stmt->execute([$username]);
+      $user = $stmt->fetch();
+      if ($user && password_verify($password, $user['password_hash'])) {
+        session_regenerate_id(true);
+        $_SESSION['user'] = [
+          'id'       => $user['id'],
+          'username' => $user['username'],
+          'role'     => $user['role'],
+        ];
+        $_SESSION['LAST_ACTIVITY'] = time();
+        return true;
+      }
+      return false;
+    } catch (PDOException $e) {
+      $mysqlCode = (int)($e->errorInfo[1] ?? 0);
+      $msg = strtolower($e->getMessage());
+      $isGoneAway = ($mysqlCode === 2006) || (strpos($msg, 'server has gone away') !== false);
+      if (!$retried && $isGoneAway && function_exists('tt_db_reconnect') && tt_db_reconnect()) {
+        $retried = true;
+        continue;
+      }
+      return null; // DB error
+    }
   }
-  return false;
 }
 
 function logout() {
