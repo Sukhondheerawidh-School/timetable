@@ -102,6 +102,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         flash_set('success', 'สร้างเวรแล้ว ('.$created.' รายการ)');
         redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
+      } elseif ($action === 'update_required') {
+        $id = (int)($_POST['id'] ?? 0);
+        $required = (int)($_POST['required_count'] ?? 1);
+        $required = max(1, min(20, $required));
+
+        if (!$id) throw new Exception('ไม่พบรายการเวร');
+
+        $oldStmt = $pdo->prepare(
+          'SELECT ms.id, ms.required_count, dp.building_id '
+          .'FROM duty_master_shifts ms '
+          .'JOIN duty_master_posts dp ON dp.id=ms.duty_post_id '
+          .'WHERE ms.id=? '
+          .'LIMIT 1'
+        );
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$oldRow) throw new Exception('ไม่พบเวร');
+
+        if ($building_id > 0 && (int)$oldRow['building_id'] !== $building_id) {
+          throw new Exception('เวรนี้ไม่อยู่ในอาคารที่เลือก');
+        }
+
+        $oldRequired = (int)$oldRow['required_count'];
+        if ($required < $oldRequired) {
+          $maxStmt = $pdo->prepare(
+            'SELECT COALESCE(MAX(t.cnt),0) '
+            .'FROM ( '
+            .'  SELECT COUNT(*) AS cnt '
+            .'  FROM duty_term_assignments '
+            .'  WHERE duty_master_shift_id=? '
+            .'  GROUP BY academic_year_id, term_no '
+            .') t'
+          );
+          $maxStmt->execute([$id]);
+          $maxAssigned = (int)$maxStmt->fetchColumn();
+          if ($maxAssigned > $required) {
+            throw new Exception('ลดจำนวนไม่ได้: มีการจัดครูแล้วสูงสุด '.$maxAssigned.' คนในบางเทอม (โปรดถอนการจัดครูก่อน)');
+          }
+        }
+
+        if ($required !== $oldRequired) {
+          $upd = $pdo->prepare('UPDATE duty_master_shifts SET required_count=? WHERE id=?');
+          $upd->execute([$required, $id]);
+          logUpdate('duty_master_shifts', $id, ['required_count' => $oldRequired], ['required_count' => $required]);
+        }
+
+        flash_set('success', 'บันทึกจำนวนครูแล้ว');
+        redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
       } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
 
@@ -429,7 +477,25 @@ include __DIR__ . '/../partials/navbar.php';
               <td class="px-3 py-2"><span class="font-medium"><?= htmlspecialchars($timeRange); ?></span></td>
               <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($s['building_name'] ?? '—'); ?></td>
               <td class="px-3 py-2 font-medium"><?= htmlspecialchars($s['post_name']); ?></td>
-              <td class="px-3 py-2 text-right"><span class="inline-flex px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold"><?= (int)$s['required_count']; ?> คน</span></td>
+              <td class="px-3 py-2 text-right">
+                <form method="post" class="inline-flex items-center justify-end gap-2">
+                  <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+                  <input type="hidden" name="action" value="update_required">
+                  <input type="hidden" name="id" value="<?= (int)$s['id']; ?>">
+                  <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
+                  <input
+                    type="number"
+                    name="required_count"
+                    value="<?= (int)$s['required_count']; ?>"
+                    min="1"
+                    max="20"
+                    class="w-20 border rounded-lg px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    aria-label="จำนวนครู"
+                  >
+                  <span class="text-xs text-slate-500">คน</span>
+                  <button class="px-3 py-1.5 rounded-lg border hover:bg-slate-50">บันทึก</button>
+                </form>
+              </td>
               <td class="px-3 py-2 text-right">
                 <form method="post" onsubmit="return ttConfirmSubmit(this, { title: 'ยืนยันการลบ', text: 'ลบเวรนี้?', confirmButtonText: 'ลบ' });" class="inline">
                   <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
@@ -482,6 +548,36 @@ include __DIR__ . '/../partials/navbar.php';
     const rows = Array.from(document.querySelectorAll('.tt-shift-row'));
     if (!rows.length) return;
 
+    // persist filters across refresh (per building)
+    const buildingId = String(<?= (int)$building_id; ?>);
+    const LS_KEY = 'tt:duty_shifts:filter:' + buildingId;
+
+    function loadFilter(){
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        return {
+          q: typeof obj.q === 'string' ? obj.q : '',
+          day: typeof obj.day === 'string' ? obj.day : ''
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveFilter(){
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+          q: String(searchEl?.value || ''),
+          day: String(dayEl?.value || '')
+        }));
+      } catch (e) {
+        // ignore
+      }
+    }
+
     function applyShiftFilter(){
       const q = (searchEl?.value || '').toLowerCase().trim();
       const day = (dayEl?.value || '').trim();
@@ -494,8 +590,17 @@ include __DIR__ . '/../partials/navbar.php';
       });
     }
 
-    if (searchEl) searchEl.addEventListener('input', applyShiftFilter);
-    if (dayEl) dayEl.addEventListener('change', applyShiftFilter);
+    // restore previous filter if available
+    const saved = loadFilter();
+    if (saved) {
+      if (searchEl && typeof saved.q === 'string') searchEl.value = saved.q;
+      if (dayEl && typeof saved.day === 'string') dayEl.value = saved.day;
+    }
+
+    applyShiftFilter();
+
+    if (searchEl) searchEl.addEventListener('input', () => { applyShiftFilter(); saveFilter(); });
+    if (dayEl) dayEl.addEventListener('change', () => { applyShiftFilter(); saveFilter(); });
   })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

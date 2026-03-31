@@ -7,6 +7,10 @@ requireAdmin();
 
 tt_duty_init($pdo);
 
+// Buildings (optional filter)
+$building_id_param = $_GET['building_id'] ?? null;
+$building_id = $building_id_param === null ? 0 : (int)$building_id_param;
+
 $years = $pdo->query('SELECT id, year_label, is_active FROM academic_years ORDER BY year_label DESC')->fetchAll();
 $activeYearId = 0;
 foreach ($years as $y) { if (!empty($y['is_active'])) { $activeYearId = (int)$y['id']; break; } }
@@ -30,7 +34,9 @@ foreach (tt_terms_list($pdo, $year_id) as $t) {
   if ((int)$t['term_no'] === $term_no) { $termName = (string)$t['term_name']; break; }
 }
 
-$stmt = $pdo->prepare('SELECT ms.day_of_week,
+$buildingLabel = $building_id > 0 ? tt_building_label($pdo, $building_id) : '';
+
+$sql = 'SELECT ms.day_of_week,
     mts.id AS slot_id, mts.sort_order, mts.slot_label, mts.start_time, mts.end_time,
     mp.post_name,
   t.first_name, t.last_name
@@ -40,12 +46,22 @@ $stmt = $pdo->prepare('SELECT ms.day_of_week,
   JOIN duty_master_posts mp ON mp.id=ms.duty_post_id
   JOIN teachers t ON t.id=ta.teacher_id
   WHERE ta.academic_year_id=? AND ta.term_no=?
+    ';
+$params = [$year_id, $term_no];
+if ($building_id > 0) {
+  $sql .= ' AND mp.building_id=?';
+  $params[] = $building_id;
+}
+
+$sql .= '
     AND NOT EXISTS (
       SELECT 1 FROM duty_term_exclusions e
       WHERE e.academic_year_id=ta.academic_year_id AND e.term_no=ta.term_no AND e.teacher_id=ta.teacher_id
     )
-  ORDER BY ms.day_of_week, mts.sort_order, mp.post_name, t.first_name, t.last_name');
-$stmt->execute([$year_id, $term_no]);
+  ORDER BY ms.day_of_week, mts.sort_order, mp.post_name, t.first_name, t.last_name';
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $groups = []; // [day][slot_id][post_name] => ['slot'=>..., 'teachers'=>[]]
@@ -81,7 +97,7 @@ $today = date('Y-m-d');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>รายงานเวรครู - <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> - <?= htmlspecialchars($termName); ?></title>
+  <title>รายงานเวรครู - <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> - <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' - '.htmlspecialchars($buildingLabel)) : '' ?></title>
   <style>
     @font-face {
       font-family: 'Sarabun';
@@ -110,27 +126,27 @@ $today = date('Y-m-d');
 
     :root { --border: #e5e7eb; --muted: #475569; }
     html, body { height: 100%; }
-    body { font-family: 'Sarabun', sans-serif; font-size: 16px; line-height: 1.55; margin: 0; background: #f1f5f9; color: #0f172a; }
+    body { font-family: 'Sarabun', sans-serif; font-size: 14px; line-height: 1.5; margin: 0; background: #f1f5f9; color: #0f172a; }
     .wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
     .paper { background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
-    .top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 18px 20px; border-bottom: 1px solid var(--border); }
-    .title { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: .2px; }
-    .sub { margin-top: 6px; color: var(--muted); font-size: 16px; }
+    .top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+    .title { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: .2px; }
+    .sub { margin-top: 6px; color: var(--muted); font-size: 14px; }
 
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .btn { appearance: none; border: 1px solid var(--border); background: #fff; color: #0f172a; padding: 10px 14px; border-radius: 12px; text-decoration: none; font-size: 16px; cursor: pointer; }
+    .btn { appearance: none; border: 1px solid var(--border); background: #fff; color: #0f172a; padding: 9px 12px; border-radius: 12px; text-decoration: none; font-size: 14px; cursor: pointer; }
     .btn.primary { background: #0f172a; border-color: #0f172a; color: #fff; }
 
-    .section { padding: 18px 20px 22px; }
-    .day { margin: 0 0 10px; font-weight: 700; font-size: 18px; }
+    .section { padding: 16px 18px 18px; }
+    .day { margin: 0 0 8px; font-weight: 700; font-size: 16px; }
 
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+    th, td { padding: 8px 8px; border-top: 1px solid var(--border); vertical-align: top; }
     thead th { background: #f1f5f9; border-top: none; text-align: left; }
     .slot { white-space: nowrap; width: 240px; }
     .post { width: 240px; }
     .teachers { line-height: 1.55; }
-    .pill { display: inline-block; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; margin: 0 8px 8px 0; background: #f8fafc; }
+    .pill { display: inline-block; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; margin: 0 6px 6px 0; background: #f8fafc; }
 
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -150,11 +166,11 @@ $today = date('Y-m-d');
       <div class="top">
         <div>
           <h1 class="title">รายงานเวรครู</h1>
-          <div class="sub">ปีการศึกษา: <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> · <?= htmlspecialchars($termName); ?> · วันที่พิมพ์: <?= htmlspecialchars($today); ?></div>
+          <div class="sub">ปีการศึกษา: <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> · <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' · อาคาร: '.htmlspecialchars($buildingLabel)) : '' ?> · วันที่พิมพ์: <?= htmlspecialchars($today); ?></div>
         </div>
         <div class="actions">
           <button class="btn primary" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
-          <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no)); ?>">กลับหน้าสรุป</a>
+          <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?('&building_id='.$building_id):''))); ?>">กลับหน้าสรุป</a>
         </div>
       </div>
 
@@ -194,7 +210,7 @@ $today = date('Y-m-d');
                         <?php if ($first): ?>
                           <td class="slot" rowspan="<?= (int)$rowSpan; ?>">
                             <div style="font-weight:700;"><?= htmlspecialchars($slotLabel); ?></div>
-                            <div style="color: var(--muted); font-size: 16px;"><?= htmlspecialchars($st); ?>–<?= htmlspecialchars($en); ?></div>
+                            <div style="color: var(--muted); font-size: 14px;"><?= htmlspecialchars($st); ?>–<?= htmlspecialchars($en); ?></div>
                           </td>
                           <?php $first = false; ?>
                         <?php endif; ?>

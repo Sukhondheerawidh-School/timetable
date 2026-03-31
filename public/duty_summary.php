@@ -136,7 +136,10 @@ include __DIR__ . '/../partials/navbar.php';
     <div class="md:col-span-3 flex items-end">
       <div class="w-full flex items-end justify-between gap-2">
         <div class="text-xs text-slate-500">ดูว่าใครรับเวรกี่ครั้ง และอยู่จุดไหนบ้าง</div>
-        <a class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50" target="_blank" rel="noopener" href="<?= url('duty_summary_report.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0 ? ('&building_id='.$building_id) : '')) ?>">รายงาน</a>
+        <div class="flex gap-2">
+          <a class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50" target="_blank" rel="noopener" href="<?= url('duty_summary_report.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0 ? ('&building_id='.$building_id) : '')) ?>">รายงาน</a>
+          <a class="px-3 py-2 rounded-xl border bg-white hover:bg-slate-50" target="_blank" rel="noopener" href="<?= url('duty_summary_teacher_report.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0 ? ('&building_id='.$building_id) : '')) ?>">รายงานแยกครู</a>
+        </div>
       </div>
     </div>
   </form>
