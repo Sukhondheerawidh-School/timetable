@@ -98,6 +98,8 @@ $today = date('Y-m-d');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>รายงานเวรครู - <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> - <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' - '.htmlspecialchars($buildingLabel)) : '' ?></title>
+  <link rel="icon" type="image/png" href="<?= htmlspecialchars(url('assets/logo-web.png?v=' . time())); ?>">
+  <link rel="shortcut icon" type="image/png" href="<?= htmlspecialchars(url('assets/logo-web.png?v=' . time())); ?>">
   <style>
     @font-face {
       font-family: 'Sarabun';
@@ -136,6 +138,7 @@ $today = date('Y-m-d');
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .btn { appearance: none; border: 1px solid var(--border); background: #fff; color: #0f172a; padding: 9px 12px; border-radius: 12px; text-decoration: none; font-size: 14px; cursor: pointer; }
     .btn.primary { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .print-hint { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
 
     .section { padding: 16px 18px 18px; }
     .day { margin: 0 0 8px; font-weight: 700; font-size: 16px; }
@@ -150,13 +153,19 @@ $today = date('Y-m-d');
 
     @media print {
       @page { size: A4; margin: 14mm; }
+      html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       body { background: #fff; }
       .wrap { margin: 0; max-width: none; padding: 0; }
       .paper { border: none; border-radius: 0; box-shadow: none; }
       .actions { display: none; }
+      .print-hint { display: none; }
       a { color: inherit; text-decoration: none; }
       .section { padding: 0; }
       .top { padding: 0 0 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+
+      thead th { background: #f1f5f9 !important; }
+      .pill { background: #f8fafc !important; }
     }
   </style>
 </head>
@@ -171,6 +180,7 @@ $today = date('Y-m-d');
         <div class="actions">
           <button class="btn primary" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
           <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?('&building_id='.$building_id):''))); ?>">กลับหน้าสรุป</a>
+          <div class="print-hint">ถ้าพิมพ์แล้วสีไม่ออก: ในหน้าปริ้นของเบราว์เซอร์ให้เปิด “Background graphics” (พิมพ์พื้นหลัง)</div>
         </div>
       </div>
 

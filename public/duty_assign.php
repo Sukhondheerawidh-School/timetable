@@ -27,6 +27,12 @@ if ($building_id <= 0 && !empty($buildings)) {
   $building_id = (int)$buildings[0]['id'];
 }
 
+// View mode
+$view = (string)($_GET['view'] ?? 'week');
+if ($view !== 'day' && $view !== 'week') $view = 'week';
+$day = (int)($_GET['day'] ?? (int)date('N'));
+if ($day < 1 || $day > 7) $day = 1;
+
 // Master slots exist from periods
 tt_duty_master_sync_from_periods($pdo);
 
@@ -49,6 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$shift_id || !$teacher_id) throw new Exception('เลือกเวร/ครูให้ครบ');
 
         $returnShiftId = (int)($_POST['return_shift_id'] ?? $shift_id);
+        $returnView = (string)($_POST['return_view'] ?? $view);
+        $returnView = ($returnView === 'day') ? 'day' : 'week';
+        $returnDay = (int)($_POST['return_day'] ?? $day);
+        if ($returnDay < 1 || $returnDay > 7) $returnDay = 1;
 
         // Exclusions
         $exChk = $pdo->prepare('SELECT 1 FROM duty_term_exclusions WHERE academic_year_id=? AND term_no=? AND teacher_id=? LIMIT 1');
@@ -120,10 +130,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         flash_set('success', 'จัดเวรแล้ว');
         $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
-        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').$anchor);
+        $qs = 'year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'');
+        $qs .= '&view='.$returnView;
+        if ($returnView === 'day') $qs .= '&day='.$returnDay;
+        redirect('duty_assign.php?'.$qs.$anchor);
       } elseif ($action === 'unassign') {
         $id = (int)($_POST['id'] ?? 0);
         $returnShiftId = (int)($_POST['return_shift_id'] ?? 0);
+        $returnView = (string)($_POST['return_view'] ?? $view);
+        $returnView = ($returnView === 'day') ? 'day' : 'week';
+        $returnDay = (int)($_POST['return_day'] ?? $day);
+        if ($returnDay < 1 || $returnDay > 7) $returnDay = 1;
 
         $oldStmt = $pdo->prepare('SELECT id, academic_year_id, term_no, duty_master_shift_id, teacher_id FROM duty_term_assignments WHERE id=? AND academic_year_id=? AND term_no=?');
         $oldStmt->execute([$id, $year_id, $term_no]);
@@ -137,7 +154,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         flash_set('success', 'ลบแล้ว');
         $anchor = $returnShiftId > 0 ? '#shift-'.$returnShiftId : '';
-        redirect('duty_assign.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').$anchor);
+        $qs = 'year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'');
+        $qs .= '&view='.$returnView;
+        if ($returnView === 'day') $qs .= '&day='.$returnDay;
+        redirect('duty_assign.php?'.$qs.$anchor);
       }
     } catch (Throwable $e) {
       $err = 'ผิดพลาด: '.$e->getMessage();
@@ -161,15 +181,22 @@ $shiftsSql = 'SELECT ms.id, ms.day_of_week, ms.required_count,
   JOIN duty_master_time_slots dts ON dts.id=ms.duty_time_slot_id
   JOIN duty_master_posts dp ON dp.id=ms.duty_post_id
   WHERE ms.is_active=1 AND dts.is_active=1 AND dp.is_active=1
-    AND ms.day_of_week BETWEEN 1 AND 5
   ';
+$shiftsParams = [];
+if ($view === 'day') {
+  $shiftsSql .= ' AND ms.day_of_week = ?';
+  $shiftsParams[] = $day;
+} else {
+  $shiftsSql .= ' AND ms.day_of_week BETWEEN 1 AND 5';
+}
 if ($building_id > 0) {
   // strict: only shifts whose post belongs to selected building
   $shiftsSql .= ' AND dp.building_id = ?';
+  $shiftsParams[] = $building_id;
 }
 $shiftsSql .= ' ORDER BY ms.day_of_week, dts.sort_order, dp.post_name';
 $shiftsStmt = $pdo->prepare($shiftsSql);
-$shiftsStmt->execute($building_id > 0 ? [$building_id] : []);
+$shiftsStmt->execute($shiftsParams);
 $shifts = $shiftsStmt->fetchAll();
 
 // Assignments
@@ -267,16 +294,25 @@ if ($periodList) {
 
 // Duty busy (avoid double duty same slot/day)
 $dutyBusy = []; // [day][slotId][teacher]=true
-$busyDutyStmt = $pdo->prepare('SELECT ms.day_of_week, ms.duty_time_slot_id AS slot_id, ta.teacher_id
+$busyDutySql = 'SELECT ms.day_of_week, ms.duty_time_slot_id AS slot_id, ta.teacher_id
   FROM duty_term_assignments ta
   JOIN duty_master_shifts ms ON ms.id=ta.duty_master_shift_id
   WHERE ta.academic_year_id=? AND ta.term_no=?
-    AND ms.day_of_week BETWEEN 1 AND 5
+    ';
+$busyDutyParams = [$year_id, $term_no];
+if ($view === 'day') {
+  $busyDutySql .= ' AND ms.day_of_week=?';
+  $busyDutyParams[] = $day;
+} else {
+  $busyDutySql .= ' AND ms.day_of_week BETWEEN 1 AND 5';
+}
+$busyDutySql .= '
     AND NOT EXISTS (
       SELECT 1 FROM duty_term_exclusions e
       WHERE e.academic_year_id=ta.academic_year_id AND e.term_no=ta.term_no AND e.teacher_id=ta.teacher_id
-    )');
-$busyDutyStmt->execute([$year_id, $term_no]);
+    )';
+$busyDutyStmt = $pdo->prepare($busyDutySql);
+$busyDutyStmt->execute($busyDutyParams);
 while ($r = $busyDutyStmt->fetch(PDO::FETCH_ASSOC)) {
   $d = (int)$r['day_of_week']; $sid = (int)$r['slot_id']; $tid = (int)$r['teacher_id'];
   $dutyBusy[$d][$sid][$tid] = true;
@@ -385,6 +421,23 @@ include __DIR__ . '/../partials/navbar.php';
       <?php endif; ?>
     </div>
 
+    <div class="md:col-span-4">
+      <label class="block text-xs mb-1">โหมดมุมมอง</label>
+      <input type="hidden" name="view" value="<?= htmlspecialchars($view); ?>">
+      <div class="inline-flex rounded-xl border bg-white overflow-hidden">
+        <button type="button" class="px-3 py-2 text-sm <?= $view==='week' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50'; ?>" onclick="this.form.view.value='week'; this.form.submit();">รายสัปดาห์</button>
+        <button type="button" class="px-3 py-2 text-sm <?= $view==='day' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50'; ?>" onclick="this.form.view.value='day'; this.form.submit();">รายวัน</button>
+      </div>
+    </div>
+    <div class="md:col-span-4 <?= $view==='day' ? '' : 'hidden'; ?>">
+      <label class="block text-xs mb-1">เลือกวัน</label>
+      <select name="day" class="w-full border rounded px-3 py-2" onchange="this.form.submit()">
+        <?php for($d=1;$d<=7;$d++): ?>
+          <option value="<?= (int)$d; ?>" <?= (int)$d===(int)$day?'selected':''; ?>><?= htmlspecialchars(tt_dow_label($d)); ?></option>
+        <?php endfor; ?>
+      </select>
+    </div>
+
     <div class="md:col-span-12">
       <div class="text-xs text-slate-500">ครูที่มีสอน/ติดข้อจำกัด/ถูกละเว้นเวร (ช่วงเวลานั้น) จะไม่แสดงในรายการให้เลือก · ถ้ามีสอนคาบติดกันจะยังเลือกได้ และระบบจะพยายามจัดอันดับให้เหมาะสม</div>
     </div>
@@ -416,6 +469,7 @@ include __DIR__ . '/../partials/navbar.php';
 
   <div class="bg-white rounded-2xl shadow overflow-hidden">
     <div class="overflow-x-auto">
+      <?php if ($view === 'week'): ?>
       <table class="min-w-full text-sm border-separate border-spacing-0">
         <thead class="bg-slate-50 sticky top-0 z-10">
           <tr>
@@ -544,6 +598,8 @@ include __DIR__ . '/../partials/navbar.php';
                                     <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
                                     <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
                                     <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
+                                    <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
+                                    <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
                                     <input type="hidden" name="id" value="<?= (int)$a['id']; ?>">
                                     <button class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
                                   </form>
@@ -561,9 +617,11 @@ include __DIR__ . '/../partials/navbar.php';
                               <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
                               <input type="hidden" name="shift_id" value="<?= (int)$shiftId; ?>">
                               <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
+                              <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
+                              <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
 
                               <div class="flex-1">
-                                <select name="teacher_id" class="w-full border rounded px-2 py-1" required>
+                                <select name="teacher_id" class="w-full border rounded px-2 py-1" required data-tt-teacher-select>
                                 <option value="">-- เลือกครู (ว่าง) --</option>
 
                                 <?php
@@ -604,7 +662,405 @@ include __DIR__ . '/../partials/navbar.php';
           <?php endforeach; ?>
         </tbody>
       </table>
+      <?php else: ?>
+      <div class="px-4 py-3 border-b bg-slate-50">
+        <div class="text-sm font-semibold">โหมดรายวัน: <?= htmlspecialchars(tt_dow_label((int)$day)); ?></div>
+        <div class="text-xs text-slate-500 mt-1">คอลัมน์เป็นคาบ/ช่วงเวลา เรียงซ้าย → ขวา</div>
+      </div>
+      <?php
+        $slotsDay = [];
+        foreach ($slots as $slot) {
+          $sid = (int)$slot['id'];
+          if (!empty($shiftByCell[$day][$sid])) $slotsDay[] = $slot;
+        }
+      ?>
+      <?php if (!$slotsDay): ?>
+        <div class="p-4 text-sm text-slate-500">— ยังไม่มีเวรในวันนี้ —</div>
+      <?php else: ?>
+      <table class="min-w-full text-sm border-separate border-spacing-0">
+        <thead class="bg-slate-50 sticky top-0 z-10">
+          <tr>
+            <?php foreach ($slotsDay as $slot): ?>
+              <?php $pno = $slot['period_no']===null? null : (int)$slot['period_no']; ?>
+              <th class="text-left px-3 py-2 min-w-[240px]">
+                <div class="font-medium"><?= htmlspecialchars($slot['slot_label']); ?></div>
+                <div class="text-xs text-slate-500"><?= htmlspecialchars(substr((string)$slot['start_time'],0,5)); ?>–<?= htmlspecialchars(substr((string)$slot['end_time'],0,5)); ?><?= $pno===null? '' : ' · คาบ '.$pno; ?></div>
+              </th>
+            <?php endforeach; ?>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="align-top">
+            <?php foreach ($slotsDay as $slot): ?>
+              <?php
+                $slotId = (int)$slot['id'];
+                $pno = $slot['period_no']===null? null : (int)$slot['period_no'];
+                $cellShifts = $shiftByCell[$day][$slotId] ?? [];
+              ?>
+              <td class="px-3 py-3">
+                <?php if (!$cellShifts): ?>
+                  <div class="text-xs text-slate-400">—</div>
+                <?php else: ?>
+                  <div class="space-y-3">
+                    <?php $shiftIndex = 0; ?>
+                    <?php foreach ($cellShifts as $sh): ?>
+                      <?php
+                        $shiftIndex++;
+                        $shiftBg = ($shiftIndex % 2 === 1) ? 'bg-sky-100/80 border-sky-200' : 'bg-white border-slate-200';
+                        $shiftId = (int)$sh['id'];
+                        $as = $assignments[$shiftId] ?? [];
+                        $cap = (int)$sh['required_count'];
+                        $filled = count($as);
+
+                        // Build available teacher list
+                        $available = [];
+                        foreach ($teachers as $t) {
+                          $tid = (int)$t['id'];
+                          if (!empty($dutyBusy[$day][$slotId][$tid])) continue;
+                          if ($pno !== null) {
+                            if (!empty($busyTeach[$day][$pno][$tid])) continue;
+                            if (!empty($busyCons[$day][$pno][$tid])) continue;
+                          }
+                          $available[] = $t;
+                        }
+
+                        // Recommendations: fewer duty counts, avoid adjacent teaching
+                        $scored = [];
+                        foreach ($available as $t) {
+                          $tid = (int)$t['id'];
+                          $cnt = (int)($dutyCount[$tid] ?? 0);
+                          $adj = 0;
+                          $adjNotes = [];
+                          if ($pno !== null && $pno > 0) {
+                            $prev = $pno - 1;
+                            $next = $pno + 1;
+
+                            $hasPrevTeach = false;
+                            $hasNextTeach = false;
+
+                            if ($prev > 0) {
+                              if (!empty($busyTeach[$day][$prev][$tid])) { $hasPrevTeach = true; }
+                            }
+                            if (!empty($busyTeach[$day][$next][$tid])) { $hasNextTeach = true; }
+
+                            if ($hasPrevTeach) { $adj++; $adjNotes[] = 'มีสอนคาบ '.$prev; }
+                            if ($hasNextTeach) { $adj++; $adjNotes[] = 'มีสอนคาบ '.$next; }
+
+                            if ($pno >= 4 && $pno <= 6 && $adj === 1 && ($hasPrevTeach xor $hasNextTeach)) {
+                              $adj = 0;
+                              $adjNotes[] = 'คาบติดกันด้านเดียว';
+                            }
+                          }
+
+                          $scored[] = ['t'=>$t, 'cnt'=>$cnt, 'adj'=>$adj, 'adjNotes'=>$adjNotes];
+                        }
+                        usort($scored, function($a,$b){
+                          if ($a['adj'] !== $b['adj']) return $a['adj'] <=> $b['adj'];
+                          if ($a['cnt'] !== $b['cnt']) return $a['cnt'] <=> $b['cnt'];
+                          return $a['t']['teacher_code'] <=> $b['t']['teacher_code'];
+                        });
+                        $sortedTeachers = $scored;
+                      ?>
+                      <div id="shift-<?= (int)$shiftId; ?>" class="rounded-xl p-3 border <?= $shiftBg; ?>">
+                        <div class="flex items-start justify-between gap-2">
+                          <div>
+                            <div class="font-medium"><?= htmlspecialchars($sh['post_name']); ?></div>
+                            <div class="text-xs text-slate-500">ต้องการ <?= $cap ?> คน · ลงแล้ว <?= $filled ?> คน</div>
+                          </div>
+                          <?php if ($filled >= $cap): ?>
+                            <span class="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700">ครบแล้ว</span>
+                          <?php endif; ?>
+                        </div>
+
+                        <?php if ($as): ?>
+                          <div class="mt-2 space-y-1">
+                            <?php foreach ($as as $a): ?>
+                              <div class="flex items-center justify-between gap-2 bg-white border rounded-lg px-2 py-1">
+                                <div class="text-sm">
+                                  <?= htmlspecialchars(($a['teacher_code']? '['.$a['teacher_code'].'] ' : '').$a['first_name'].' '.$a['last_name']); ?>
+                                </div>
+                                <form method="post" onsubmit="return ttConfirmSubmit(this, { title: 'ยืนยันการลบ', text: 'ลบครูคนนี้ออกจากเวร?', confirmButtonText: 'ลบ' });">
+                                  <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+                                  <input type="hidden" name="action" value="unassign">
+                                  <input type="hidden" name="year_id" value="<?= (int)$year_id; ?>">
+                                  <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
+                                  <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
+                                  <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
+                                  <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
+                                  <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
+                                  <input type="hidden" name="id" value="<?= (int)$a['id']; ?>">
+                                  <button class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
+                                </form>
+                              </div>
+                            <?php endforeach; ?>
+                          </div>
+                        <?php endif; ?>
+
+                        <?php if ($filled < $cap): ?>
+                          <form method="post" class="mt-2 flex gap-2">
+                            <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+                            <input type="hidden" name="action" value="assign">
+                            <input type="hidden" name="year_id" value="<?= (int)$year_id; ?>">
+                            <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
+                            <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
+                            <input type="hidden" name="shift_id" value="<?= (int)$shiftId; ?>">
+                            <input type="hidden" name="return_shift_id" value="<?= (int)$shiftId; ?>">
+                              <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
+                              <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
+
+                            <div class="flex-1">
+                              <select name="teacher_id" class="w-full border rounded px-2 py-1" required data-tt-teacher-select>
+                              <option value="">-- เลือกครู (ว่าง) --</option>
+
+                              <?php
+                                $bestDutyCnt = null;
+                                foreach ($sortedTeachers as $rr) {
+                                  if ((int)$rr['adj'] !== 0) continue;
+                                  $c = (int)$rr['cnt'];
+                                  if ($bestDutyCnt === null || $c < $bestDutyCnt) $bestDutyCnt = $c;
+                                }
+                              ?>
+
+                              <?php foreach ($sortedTeachers as $r): ?>
+                                <?php
+                                  $t = $r['t'];
+                                  $notes = [];
+                                  if (!empty($r['adjNotes'])) {
+                                    $notes[] = implode(', ', (array)$r['adjNotes']);
+                                  }
+                                  $isBest = ((int)$r['adj'] === 0) && ($bestDutyCnt !== null) && ((int)$r['cnt'] === (int)$bestDutyCnt);
+                                  $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                  $prefix = $isBest ? '✓ ' : '';
+                                  $label = $prefix.($t['teacher_code']? '['.$t['teacher_code'].'] ' : '').$t['first_name'].' '.$t['last_name'].$suffix;
+                                ?>
+                                <option value="<?= (int)$t['id']; ?>" <?= $isBest ? 'style="background:#e0f2fe;"' : ''; ?>><?= htmlspecialchars($label); ?></option>
+                              <?php endforeach; ?>
+                              </select>
+                            </div>
+                            <button class="px-3 py-1.5 rounded bg-slate-900 text-white">ลง</button>
+                          </form>
+                        <?php endif; ?>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+              </td>
+            <?php endforeach; ?>
+          </tr>
+        </tbody>
+      </table>
+      <?php endif; ?>
+      <?php endif; ?>
     </div>
   </div>
 </div>
+
+<script>
+  (function () {
+    function norm(s) {
+      return (s || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    var enhancedForms = new WeakSet();
+    var currentOpen = null; // wrapper element
+
+    function enhanceTeacherSelect(select) {
+      if (!select || select.dataset.ttEnhanced === '1') return;
+      select.dataset.ttEnhanced = '1';
+
+      var options = [];
+      var placeholder = 'เลือกครู…';
+      for (var i = 0; i < (select.options || []).length; i++) {
+        var o = select.options[i];
+        if (!o) continue;
+        if (i === 0 || !o.value) {
+          if (o.text) placeholder = o.text;
+          continue;
+        }
+        options.push({
+          value: o.value,
+          text: o.text,
+          style: o.getAttribute('style') || ''
+        });
+      }
+      if (!options.length) return;
+
+      // Wrap & hide native select (keep it for submission)
+      var wrapper = document.createElement('div');
+      wrapper.className = 'relative';
+      select.parentNode.insertBefore(wrapper, select);
+      wrapper.appendChild(select);
+
+      select.style.position = 'absolute';
+      select.style.left = '-9999px';
+      select.style.width = '1px';
+      select.style.height = '1px';
+      select.tabIndex = -1;
+      select.required = false;
+
+      // Visible combobox input
+      var input = document.createElement('input');
+      input.type = 'search';
+      input.placeholder = placeholder;
+      input.className = 'w-full border rounded px-2 py-1 text-xs';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      wrapper.insertBefore(input, select);
+
+      // Dropdown list
+      var menu = document.createElement('div');
+      menu.className = 'absolute left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-56 overflow-auto z-50 hidden';
+      wrapper.appendChild(menu);
+
+      var filtered = options.slice();
+      var activeIndex = -1;
+
+      wrapper.__ttClose = close;
+
+      function close() {
+        menu.classList.add('hidden');
+        activeIndex = -1;
+        if (currentOpen === wrapper) currentOpen = null;
+      }
+
+      function open() {
+        if (currentOpen && currentOpen !== wrapper && currentOpen.__ttClose) {
+          try { currentOpen.__ttClose(); } catch (e) {}
+        }
+        menu.classList.remove('hidden');
+        currentOpen = wrapper;
+      }
+
+      function render() {
+        menu.innerHTML = '';
+        if (!filtered.length) {
+          var empty = document.createElement('div');
+          empty.className = 'px-3 py-2 text-xs text-slate-500';
+          empty.textContent = '— ไม่พบครู —';
+          menu.appendChild(empty);
+          return;
+        }
+
+        for (var j = 0; j < filtered.length; j++) {
+          (function (idx) {
+            var opt = filtered[idx];
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'w-full text-left px-3 py-2 text-xs hover:bg-slate-50';
+            if (idx === activeIndex) btn.className += ' bg-slate-100';
+            btn.textContent = opt.text;
+            if (opt.style) btn.setAttribute('style', opt.style);
+
+            // Prevent input blur before click fires
+            btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            btn.addEventListener('click', function () { choose(opt); });
+
+            menu.appendChild(btn);
+          })(j);
+        }
+      }
+
+      function filterNow() {
+        var q = norm(input.value);
+        filtered = options.filter(function (opt) {
+          return q === '' || norm(opt.text).indexOf(q) !== -1;
+        });
+        activeIndex = filtered.length ? 0 : -1;
+        render();
+      }
+
+      function choose(opt) {
+        select.value = opt.value;
+        input.value = opt.text;
+        close();
+        try { select.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      }
+
+      // Init input from existing selected value
+      if (select.value) {
+        for (var k = 0; k < options.length; k++) {
+          if (options[k].value === select.value) {
+            input.value = options[k].text;
+            break;
+          }
+        }
+      }
+
+      input.addEventListener('focus', function () {
+        filterNow();
+        open();
+      });
+      input.addEventListener('click', function () {
+        filterNow();
+        open();
+      });
+      input.addEventListener('input', function () {
+        filterNow();
+        open();
+      });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          if (!menu.classList.contains('hidden') && activeIndex >= 0 && filtered[activeIndex]) {
+            e.preventDefault();
+            choose(filtered[activeIndex]);
+          } else {
+            e.preventDefault();
+          }
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (menu.classList.contains('hidden')) {
+            filterNow();
+            open();
+          }
+          if (filtered.length) {
+            activeIndex = Math.min(filtered.length - 1, activeIndex + 1);
+            render();
+          }
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (filtered.length) {
+            activeIndex = Math.max(0, activeIndex - 1);
+            render();
+          }
+        } else if (e.key === 'Escape') {
+          close();
+        }
+      });
+
+      // Validate on submit
+      var form = select.form;
+      if (form && !enhancedForms.has(form)) {
+        enhancedForms.add(form);
+        form.addEventListener('submit', function (e) {
+          var sel = form.querySelector('select[data-tt-teacher-select]');
+          if (!sel) return;
+          if (!sel.value) {
+            e.preventDefault();
+            var inp = form.querySelector('input[type="search"]');
+            if (inp) {
+              inp.focus();
+              inp.classList.add('border-rose-400');
+              setTimeout(function(){ inp.classList.remove('border-rose-400'); }, 700);
+            }
+          }
+        });
+      }
+    }
+
+    function init() {
+      var selects = document.querySelectorAll('select[data-tt-teacher-select]');
+      selects.forEach(function (s) { enhanceTeacherSelect(s); });
+
+      document.addEventListener('click', function (e) {
+        if (!currentOpen) return;
+        if (currentOpen.contains(e.target)) return;
+        if (currentOpen.__ttClose) {
+          try { currentOpen.__ttClose(); } catch (err) {}
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  })();
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

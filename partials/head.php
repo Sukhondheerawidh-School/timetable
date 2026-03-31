@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= $pageTitle ?? 'ระบบจัดตารางสอน'; ?></title>
-  <link rel="icon" type="image/x-icon" href="<?= url('favicon.ico?v=' . time()); ?>">
-  <link rel="shortcut icon" type="image/x-icon" href="<?= url('favicon.ico?v=' . time()); ?>">
+  <link rel="icon" type="image/png" href="<?= url('assets/logo-web.png?v=' . time()); ?>">
+  <link rel="shortcut icon" type="image/png" href="<?= url('assets/logo-web.png?v=' . time()); ?>">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="<?= url('assets/vendor/sweetalert2/sweetalert2.min.css?v=20260219'); ?>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">

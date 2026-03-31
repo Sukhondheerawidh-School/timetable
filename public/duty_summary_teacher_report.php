@@ -37,7 +37,7 @@ foreach (tt_terms_list($pdo, $year_id) as $t) {
 $buildingLabel = $building_id > 0 ? tt_building_label($pdo, $building_id) : '';
 
 // Teachers with duty assignments only (exclude term exclusions)
-$tsql = 'SELECT t.id, t.teacher_code, t.first_name, t.last_name, COUNT(*) AS duty_cnt
+$tsql = 'SELECT DISTINCT t.id, t.first_name, t.last_name
   FROM duty_term_assignments ta
   JOIN teachers t ON t.id=ta.teacher_id
   JOIN duty_master_shifts ms ON ms.id=ta.duty_master_shift_id
@@ -53,23 +53,20 @@ $tsql .= '
       SELECT 1 FROM duty_term_exclusions e
       WHERE e.academic_year_id=ta.academic_year_id AND e.term_no=ta.term_no AND e.teacher_id=ta.teacher_id
     )
-  GROUP BY t.id, t.teacher_code, t.first_name, t.last_name
-  ORDER BY duty_cnt DESC, t.teacher_code, t.first_name, t.last_name';
+  ORDER BY t.first_name, t.last_name';
 
 $tstmt = $pdo->prepare($tsql);
 $tstmt->execute($tparams);
 $trows = $tstmt->fetchAll(PDO::FETCH_ASSOC);
 
-$teachers = []; // [teacher_id] => ['label'=>..., 'items'=>[], 'duty_cnt'=>int]
+$teachers = []; // [teacher_id] => ['label'=>..., 'items'=>[]]
 foreach ($trows as $tr) {
   $tid = (int)$tr['id'];
-  $code = trim((string)($tr['teacher_code'] ?? ''));
   $name = trim((string)$tr['first_name'] . ' ' . (string)$tr['last_name']);
-  $label = trim(($code ? ('[' . $code . '] ') : '') . $name);
+  $label = $name;
   $teachers[$tid] = [
     'label' => $label !== '' ? $label : ('ครู #' . $tid),
     'items' => [], // keep for compatibility (not used in grid rendering)
-    'duty_cnt' => (int)($tr['duty_cnt'] ?? 0),
   ];
 }
 
@@ -102,7 +99,7 @@ $dstmt->execute($params);
 
 $slots = []; // [slot_id] => ['slot_label'=>..., 'start_time'=>..., 'end_time'=>..., 'sort_order'=>...]
 $hasWeekend = false;
-$grid = []; // [teacher_id][slot_id][day] => string[]
+$grid = []; // [teacher_id][slot_id][day][key] => ['post'=>string,'building'=>string]
 
 while ($r = $dstmt->fetch(PDO::FETCH_ASSOC)) {
   $tid = (int)$r['teacher_id'];
@@ -123,15 +120,13 @@ while ($r = $dstmt->fetch(PDO::FETCH_ASSOC)) {
 
   $post = (string)($r['post_name'] ?? '');
   $bname = (string)($r['building_name'] ?? '');
-  $cellText = $post;
-  if ($building_id <= 0 && $bname !== '') {
-    $cellText .= ' [' . $bname . ']';
-  }
+  $bline = ($building_id <= 0 && $bname !== '') ? $bname : '';
 
   if (!isset($grid[$tid])) $grid[$tid] = [];
   if (!isset($grid[$tid][$slotId])) $grid[$tid][$slotId] = [];
   if (!isset($grid[$tid][$slotId][$day])) $grid[$tid][$slotId][$day] = [];
-  $grid[$tid][$slotId][$day][] = $cellText;
+  $cellKey = $post . '||' . $bline;
+  $grid[$tid][$slotId][$day][$cellKey] = ['post' => $post, 'building' => $bline];
 }
 
 // Sort slots by sort_order
@@ -152,6 +147,8 @@ $today = date('Y-m-d');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>รายงานเวรครู (แยกตามครู) - <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> - <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' - '.htmlspecialchars($buildingLabel)) : '' ?></title>
+  <link rel="icon" type="image/png" href="<?= htmlspecialchars(url('assets/logo-web.png?v=' . time())); ?>">
+  <link rel="shortcut icon" type="image/png" href="<?= htmlspecialchars(url('assets/logo-web.png?v=' . time())); ?>">
   <style>
     @font-face {
       font-family: 'Sarabun';
@@ -190,13 +187,13 @@ $today = date('Y-m-d');
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .btn { appearance: none; border: 1px solid var(--border); background: #fff; color: #0f172a; padding: 8px 10px; border-radius: 12px; text-decoration: none; font-size: 12.5px; cursor: pointer; }
     .btn.primary { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .print-hint { margin-top: 7px; color: var(--muted); font-size: 12px; }
 
     .section { padding: 14px 16px 16px; }
     .teacher { padding: 12px 0; border-top: 1px solid var(--border); }
     .teacher:first-child { border-top: none; padding-top: 0; }
     .teacher-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 8px; }
     .teacher-name { font-weight: 700; font-size: 14px; }
-    .teacher-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { padding: 6px 6px; border-top: 1px solid var(--border); vertical-align: top; }
@@ -205,19 +202,25 @@ $today = date('Y-m-d');
     .slot-label { font-weight: 700; }
     .slot-time { color: var(--muted); }
     .cell-empty { color: var(--muted); }
-    .cell-duty { font-weight: 700; }
+    .cell-duty { font-weight: 700; line-height: 1.25; word-break: break-word; }
+    .cell-building { color: var(--muted); font-weight: 400; }
     .muted { color: var(--muted); }
 
     @media print {
       @page { size: A4; margin: 14mm; }
+      html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       body { background: #fff; }
       .wrap { margin: 0; max-width: none; padding: 0; }
       .paper { border: none; border-radius: 0; box-shadow: none; }
       .actions { display: none; }
+      .print-hint { display: none; }
       a { color: inherit; text-decoration: none; }
       .section { padding: 0; }
       .top { padding: 0 0 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
       .teacher { page-break-inside: avoid; }
+
+      thead th { background: #f1f5f9 !important; }
     }
   </style>
 </head>
@@ -232,6 +235,7 @@ $today = date('Y-m-d');
         <div class="actions">
           <button class="btn primary" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
           <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?('&building_id='.$building_id):''))); ?>">กลับหน้าสรุป</a>
+          <div class="print-hint">ถ้าพิมพ์แล้วสีไม่ออก: ในหน้าปริ้นของเบราว์เซอร์ให้เปิด “Background graphics” (พิมพ์พื้นหลัง)</div>
         </div>
       </div>
 
@@ -243,7 +247,6 @@ $today = date('Y-m-d');
             <div class="teacher">
               <div class="teacher-head">
                 <div class="teacher-name"><?= htmlspecialchars((string)$t['label']); ?></div>
-                <div class="teacher-meta">จำนวนเวร: <?= (int)$t['duty_cnt']; ?></div>
               </div>
 
               <table>
@@ -273,14 +276,17 @@ $today = date('Y-m-d');
                       <?php for ($day = $dayFrom; $day <= $dayTo; $day++): ?>
                         <?php
                           $items = $grid[$tid][$slotId][$day] ?? [];
-                          $items = array_values(array_unique($items));
+                          $items = array_values($items);
                         ?>
                         <td>
                           <?php if (!$items): ?>
                             <span class="cell-empty">—</span>
                           <?php else: ?>
                             <?php foreach ($items as $it): ?>
-                              <div class="cell-duty"><?= htmlspecialchars((string)$it); ?></div>
+                              <div class="cell-duty"><?= htmlspecialchars((string)($it['post'] ?? '')); ?></div>
+                              <?php if (!empty($it['building'])): ?>
+                                <div class="cell-building"><?= htmlspecialchars((string)$it['building']); ?></div>
+                              <?php endif; ?>
                             <?php endforeach; ?>
                           <?php endif; ?>
                         </td>
@@ -296,4 +302,37 @@ $today = date('Y-m-d');
     </div>
   </div>
 </body>
+<script>
+  (function () {
+    function shrinkIfWrapped(el) {
+      try {
+        var cs = window.getComputedStyle(el);
+        var size = parseFloat(cs.fontSize || '0');
+        if (!size) return;
+        var min = 10;
+        var tries = 0;
+        while (tries < 8) {
+          // If wraps to multiple lines, height becomes > 1 line-height.
+          var lh = parseFloat(window.getComputedStyle(el).lineHeight || '0');
+          if (!lh) lh = size * 1.25;
+          if (el.getBoundingClientRect().height <= lh * 1.6) break;
+          size = Math.max(min, size - 0.5);
+          el.style.fontSize = size + 'px';
+          tries++;
+          if (size <= min) break;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function run() {
+      var nodes = document.querySelectorAll('.cell-duty');
+      nodes.forEach(function (n) { shrinkIfWrapped(n); });
+    }
+
+    window.addEventListener('load', run);
+    window.addEventListener('beforeprint', run);
+  })();
+</script>
 </html>
