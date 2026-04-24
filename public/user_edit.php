@@ -1,15 +1,9 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
 requireLogin();
 requireAdmin();
-
-$debug = isset($_GET['debug']) && ($_GET['debug'] === '1' || $_GET['debug'] === 'true');
-
-// Prevent any browser/proxy caching while we chase the wrong-id issue.
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
 
 $rawGetId = $_GET['id'] ?? null;
 $rawPostId = $_POST['id'] ?? null;
@@ -19,50 +13,10 @@ if ($id <= 0) {
   redirect('users.php');
 }
 
-if ($debug) {
-  error_log('[user_edit debug] REQUEST_URI=' . ($_SERVER['REQUEST_URI'] ?? ''));
-  error_log('[user_edit debug] raw GET id=' . var_export($rawGetId, true) . ' raw POST id=' . var_export($rawPostId, true) . ' computed id=' . $id);
-  $cu = currentUser();
-  error_log('[user_edit debug] currentUser id=' . var_export($cu['id'] ?? null, true) . ' username=' . var_export($cu['username'] ?? null, true));
-}
 $stmt = $pdo->prepare('SELECT id, name, username, role FROM users WHERE id = ?');
 $stmt->execute([$id]);
 $editUser = $stmt->fetch();
 if (!$editUser) { flash_set('error','ไม่พบผู้ใช้'); redirect('users.php'); }
-
-if ($debug) {
-  try {
-    $activeDb = $pdo->query('SELECT DATABASE()')->fetchColumn();
-  } catch (Throwable $e) {
-    $activeDb = null;
-  }
-
-  // Re-check with both direct and a fresh prepared statement
-  try {
-    $userDirectDbg = $pdo->query('SELECT id, username, name, role FROM users WHERE id = ' . (int)$id . ' LIMIT 1')->fetch(PDO::FETCH_ASSOC);
-  } catch (Throwable $e) {
-    $userDirectDbg = ['error' => $e->getMessage()];
-  }
-
-  $stmtDbg = null;
-  $userPrepDbg = null;
-  $stmtDbgDump = '';
-  try {
-    $stmtDbg = $pdo->prepare('SELECT id, username, name, role FROM users WHERE id = ? LIMIT 1');
-    $stmtDbg->execute([$id]);
-    $userPrepDbg = $stmtDbg->fetch(PDO::FETCH_ASSOC);
-    ob_start();
-    $stmtDbg->debugDumpParams();
-    $stmtDbgDump = trim(ob_get_clean());
-  } catch (Throwable $e) {
-    $userPrepDbg = ['error' => $e->getMessage()];
-  }
-
-  error_log('[user_edit debug] activeDb=' . var_export($activeDb, true));
-  error_log('[user_edit debug] editUser(from first stmt)=' . json_encode($editUser, JSON_UNESCAPED_UNICODE));
-  error_log('[user_edit debug] userDirectDbg=' . json_encode($userDirectDbg, JSON_UNESCAPED_UNICODE));
-  error_log('[user_edit debug] userPrepDbg=' . json_encode($userPrepDbg, JSON_UNESCAPED_UNICODE));
-}
 
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -148,25 +102,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php endif; ?>
 
     <?php if ($err): ?>
-      <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div>
+      <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div>
     <?php endif; ?>
 
-    <form method="post" action="<?= url('user_edit.php'); ?>?id=<?= (int)$id; ?>" autocomplete="off" class="bg-white rounded-2xl shadow p-6 space-y-4">
+    <form method="post" action="<?= url('user_edit.php'); ?>?id=<?= (int)$id; ?>" autocomplete="off" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
       <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
       <input type="hidden" name="id" value="<?= (int)$id; ?>">
       <div>
-        <label class="block text-sm mb-1">ชื่อ-นามสกุล</label>
-        <input name="name" class="w-full border rounded-lg px-3 py-2" required value="<?= htmlspecialchars($_POST['name'] ?? $editUser['name'] ?? ''); ?>">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อ-นามสกุล</label>
+        <input name="name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['name'] ?? $editUser['name'] ?? ''); ?>">
       </div>
       <div>
-        <label class="block text-sm mb-1">ชื่อผู้ใช้</label>
-        <input name="username" autocomplete="off" autocapitalize="none" spellcheck="false" class="w-full border rounded-lg px-3 py-2" required value="<?= htmlspecialchars($_POST['username'] ?? $editUser['username'] ?? ''); ?>">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อผู้ใช้</label>
+        <input name="username" autocomplete="off" autocapitalize="none" spellcheck="false" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['username'] ?? $editUser['username'] ?? ''); ?>">
         <p class="text-xs text-slate-500 mt-1">a-z, 0-9, . _ - (3–32 ตัว)</p>
       </div>
       <div>
-        <label class="block text-sm mb-1">สิทธิ์</label>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">สิทธิ์</label>
         <?php $roleVal = $_POST['role'] ?? $editUser['role'] ?? 'user'; ?>
-        <select name="role" class="w-full border rounded-lg px-3 py-2">
+        <select name="role" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="user" <?= $roleVal==='user' ? 'selected':''; ?>>user</option>
           <option value="admin" <?= $roleVal==='admin' ? 'selected':''; ?>>admin</option>
         </select>
@@ -176,19 +130,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="text-sm font-medium mb-2">เปลี่ยนรหัสผ่าน (ไม่บังคับ)</div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm mb-1">รหัสผ่านใหม่</label>
-            <input type="password" name="new_password" autocomplete="new-password" class="w-full border rounded-lg px-3 py-2" placeholder="ปล่อยว่างถ้าไม่เปลี่ยน">
+            <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสผ่านใหม่</label>
+            <input type="password" name="new_password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="ปล่อยว่างถ้าไม่เปลี่ยน">
           </div>
           <div>
-            <label class="block text-sm mb-1">ยืนยันรหัสผ่านใหม่</label>
-            <input type="password" name="new_password2" autocomplete="new-password" class="w-full border rounded-lg px-3 py-2" placeholder="ปล่อยว่างถ้าไม่เปลี่ยน">
+            <label class="block text-sm font-medium text-slate-700 mb-1.5">ยืนยันรหัสผ่านใหม่</label>
+            <input type="password" name="new_password2" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="ปล่อยว่างถ้าไม่เปลี่ยน">
           </div>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-        <a href="<?= url('users.php'); ?>" class="px-4 py-2 rounded-xl border">ยกเลิก</a>
+        <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+        <a href="<?= url('users.php'); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ยกเลิก</a>
       </div>
     </form>
   </div>

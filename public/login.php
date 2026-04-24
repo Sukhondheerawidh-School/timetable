@@ -13,6 +13,13 @@ if (isset($_SESSION['timeout_message'])) {
   unset($_SESSION['timeout_message']);
 }
 
+// ตรวจ rate limit ก่อนแสดงฟอร์ม (แสดงข้อความเตือนถ้าถูกล็อก)
+$rateLimitRemaining = login_rate_check();
+if ($rateLimitRemaining > 0) {
+  $rateMins = (int)ceil($rateLimitRemaining / 60);
+  $err = "บัญชีนี้ถูกล็อกชั่วคราว กรุณารออีก {$rateMins} นาทีแล้วลองใหม่";
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF token ไม่ถูกต้อง กรุณาลองใหม่';
@@ -25,8 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $ok = login($username, $password);
       if ($ok === true) {
         redirect('index.php');
+      } elseif (is_array($ok) && !empty($ok['locked'])) {
+        $mins = (int)($ok['wait'] ?? 1);
+        $err = "เข้าสู่ระบบผิดพลาดบ่อยเกินไป กรุณารออีก {$mins} นาทีแล้วลองใหม่";
       } elseif ($ok === null) {
-        $err = 'เชื่อมต่อฐานข้อมูลไม่ได้ (MySQL อาจหยุดทำงาน) กรุณาตรวจสอบ XAMPP MySQL แล้วลองใหม่';
+        $err = 'เชื่อมต่อฐานข้อมูลไม่ได้ กรุณาติดต่อผู้ดูแลระบบ';
       } else {
         $err = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
       }
@@ -40,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เข้าสู่ระบบ - ระบบจัดตารางสอน</title>
-  <link rel="icon" type="image/x-icon" href="<?= url('favicon.ico?v=' . time()); ?>">
-  <link rel="shortcut icon" type="image/x-icon" href="<?= url('favicon.ico?v=' . time()); ?>">
+  <link rel="icon" type="image/x-icon" href="<?= url('favicon.ico?v=20260219'); ?>">
+  <link rel="shortcut icon" type="image/x-icon" href="<?= url('favicon.ico?v=20260219'); ?>">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

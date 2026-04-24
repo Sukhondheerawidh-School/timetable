@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -560,7 +560,7 @@ $activeTab = $baseTab . ' bg-slate-900 text-white';
 		</div>
 	<?php endif; ?>
 	<?php if ($err): ?>
-		<div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err) ?></div>
+		<div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><?= htmlspecialchars($err) ?></div>
 	<?php endif; ?>
 
 	<form method="get" class="bg-white rounded-2xl shadow p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-3">

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   </div>
 
   <?php if ($err): ?>
-    <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div>
+    <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div>
   <?php endif; ?>
 
   <form method="post" class="bg-white rounded-2xl shadow p-4 overflow-x-auto">
@@ -90,8 +90,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     </table>
 
     <div class="flex items-center gap-2 mt-4">
-      <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-      <a href="<?= url('periods.php'); ?>" class="px-4 py-2 rounded-xl border">กลับไปคาบเรียน</a>
+      <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+      <a href="<?= url('periods.php'); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">กลับไปคาบเรียน</a>
     </div>
   </form>
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // filepath: c:\xampp\htdocs\timetable\public\backup.php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
@@ -383,7 +383,7 @@ if (is_dir($backupDir)) {
       <div class="mb-4">
         <label class="block text-sm mb-2">เลือกไฟล์ .sql</label>
         <input type="file" name="backup_file" accept=".sql" required
-               class="w-full border rounded-lg px-3 py-2 text-sm">
+               class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
         <p class="text-xs text-slate-500 mt-1">รองรับเฉพาะไฟล์ .sql เท่านั้น</p>
       </div>
       

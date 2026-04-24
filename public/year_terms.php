@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -185,7 +185,7 @@ include __DIR__ . '/../partials/navbar.php';
   <?php endif; ?>
 
   <?php if ($err): ?>
-    <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div>
+    <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div>
   <?php endif; ?>
 
   <div class="bg-white rounded-2xl shadow p-6 mb-6">
@@ -234,12 +234,12 @@ include __DIR__ . '/../partials/navbar.php';
 
             <div class="md:col-span-4">
               <label class="block text-xs mb-1 text-slate-600">ชื่อเทอม</label>
-              <input name="term_name" class="w-full border rounded-lg px-3 py-2" value="<?= htmlspecialchars($tname); ?>" placeholder="เช่น เทอม1-Summer / เทอม 1 - เมษายน">
+              <input name="term_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" value="<?= htmlspecialchars($tname); ?>" placeholder="เช่น เทอม1-Summer / เทอม 1 - เมษายน">
             </div>
 
             <div class="md:col-span-2">
               <label class="block text-xs mb-1 text-slate-600">เริ่มเดือน</label>
-              <select name="start_month" class="w-full border rounded-lg px-3 py-2">
+              <select name="start_month" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
                 <option value="">—</option>
                 <?php for ($m=1; $m<=12; $m++): ?>
                   <option value="<?= $m; ?>" <?= ($sm===$m)?'selected':''; ?>><?= $m . ' - ' . htmlspecialchars(tt_month_name_th($m)); ?></option>
@@ -249,7 +249,7 @@ include __DIR__ . '/../partials/navbar.php';
 
             <div class="md:col-span-2">
               <label class="block text-xs mb-1 text-slate-600">ถึงเดือน</label>
-              <select name="end_month" class="w-full border rounded-lg px-3 py-2">
+              <select name="end_month" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
                 <option value="">—</option>
                 <?php for ($m=1; $m<=12; $m++): ?>
                   <option value="<?= $m; ?>" <?= ($em===$m)?'selected':''; ?>><?= $m . ' - ' . htmlspecialchars(tt_month_name_th($m)); ?></option>
@@ -282,7 +282,7 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
   </div>
 
-  <div class="bg-white rounded-2xl shadow p-6">
+  <div class="bg-white rounded-2xl shadow border border-slate-200 p-6">
     <div class="font-semibold mb-3">เพิ่มเทอม</div>
 
     <form method="post" class="grid md:grid-cols-12 gap-3 items-end">
@@ -292,17 +292,17 @@ include __DIR__ . '/../partials/navbar.php';
 
       <div class="md:col-span-2">
         <label class="block text-xs mb-1 text-slate-600">เลขเทอม</label>
-        <input name="term_no" type="number" min="1" max="255" class="w-full border rounded-lg px-3 py-2" required>
+        <input name="term_no" type="number" min="1" max="255" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
       </div>
 
       <div class="md:col-span-4">
         <label class="block text-xs mb-1 text-slate-600">ชื่อเทอม</label>
-        <input name="term_name" class="w-full border rounded-lg px-3 py-2" placeholder="เช่น เทอม 3 / Summer / เทอม1-เมษายน">
+        <input name="term_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น เทอม 3 / Summer / เทอม1-เมษายน">
       </div>
 
       <div class="md:col-span-2">
         <label class="block text-xs mb-1 text-slate-600">เริ่มเดือน</label>
-        <select name="start_month" class="w-full border rounded-lg px-3 py-2">
+        <select name="start_month" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="">—</option>
           <?php for ($m=1; $m<=12; $m++): ?>
             <option value="<?= $m; ?>"><?= $m . ' - ' . htmlspecialchars(tt_month_name_th($m)); ?></option>
@@ -312,7 +312,7 @@ include __DIR__ . '/../partials/navbar.php';
 
       <div class="md:col-span-2">
         <label class="block text-xs mb-1 text-slate-600">ถึงเดือน</label>
-        <select name="end_month" class="w-full border rounded-lg px-3 py-2">
+        <select name="end_month" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="">—</option>
           <?php for ($m=1; $m<=12; $m++): ?>
             <option value="<?= $m; ?>"><?= $m . ' - ' . htmlspecialchars(tt_month_name_th($m)); ?></option>

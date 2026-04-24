@@ -1,6 +1,9 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Block direct web access to internal folders (still usable via PHP include)
+    RewriteRule ^(app|config|vendor|backups|migrations|partials|scripts)/ - [F,L]
+
     # ให้ /timetable/ และ /timetable/index.php แสดง public/index.php เสมอ
     RewriteRule ^$ public/index.php [L]
     RewriteRule ^index\.php$ public/index.php [L]
@@ -29,6 +32,14 @@
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
+
+# บล็อกไฟล์ SQL โดยตรงไม่ให้ดาวน์โหลดได้
+<FilesMatch "\.(sql|cnf|env|log|bak)$">
+    Require all denied
+</FilesMatch>
+
+# ซ่อน Server signature
+ServerSignature Off
 
 # กำหนด charset เป็น UTF-8
 AddDefaultCharset UTF-8

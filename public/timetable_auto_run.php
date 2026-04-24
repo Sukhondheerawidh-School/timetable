@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // filepath: c:\xampp\htdocs\timetable\public\timetable_auto_run.php
 // กัน whitespace/warning ทำลาย JSON
 ob_start();
@@ -328,7 +328,7 @@ require_once $optimizerPath;
 $periods = $pdo->query("SELECT period_no FROM period_slots ORDER BY period_no")->fetchAll(PDO::FETCH_COLUMN);
 if (!$periods) respond(['error'=>'ยังไม่ได้กำหนดคาบเรียน']);
 
-$classes  = $pdo->query("SELECT id, class_name, grade_label FROM classes")->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
+$classes  = $pdo->query("SELECT c.id, c.class_name, c.grade_label, COALESCE(r.building,'') AS class_building FROM classes c LEFT JOIN rooms r ON r.id = c.homeroom_room_id")->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
 $teachers = $pdo->query("SELECT id, first_name, last_name FROM teachers")->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
 
 // ✅ สร้าง Maps แทน prepared statements
@@ -343,9 +343,6 @@ foreach ($gradeBreaksAll as $br) {
 
 $LUNCH_SET = [4,5,6];
 $MAX_CONSEC_TEACH = 4;
-
-$isPrimary = fn($g)=>preg_match('/(ป|อ|ต)/u',(string)$g)===1;
-$isSecondary = fn($g)=>preg_match('/(ม)/u',(string)$g)===1;
 
 $getBreaks=function(string $g) use(&$breakCache){
   return $breakCache[$g] ?? [];
@@ -397,7 +394,11 @@ $violatesConsec = function(int $tid,int $day,array $newPeriods) use(&$maps, $MAX
   foreach (($maps['teacherBusy'][$day] ?? []) as $p => $teachers) {
     if (isset($teachers[$tid])) $arr[] = $p;
   }
-  $arr = array_merge($arr, $newPeriods);
+  // BUG FIX: รวมคาบกิจกรรมด้วย ครูทำงานต่อเนื่องรวมกิจกรรมต้องนับด้วย
+  foreach (($maps['teacherActivity'][$day] ?? []) as $p => $teachers) {
+    if (isset($teachers[$tid])) $arr[] = $p;
+  }
+  $arr = array_values(array_unique(array_merge($arr, $newPeriods)));
   sort($arr);
   $max=$run=1; 
   for($i=1;$i<count($arr);$i++){ 
@@ -411,20 +412,31 @@ $violatesLunch = function(int $tid,int $day,array $newPeriods) use(&$maps, $LUNC
   foreach (($maps['teacherBusy'][$day] ?? []) as $p => $teachers) {
     if (isset($teachers[$tid])) $arr[] = $p;
   }
-  $arr = array_merge($arr, $newPeriods);
+  // BUG FIX: รวมคาบกิจกรรมด้วย กิจกรรมช่วง lunch ก็ต้องนับ
+  foreach (($maps['teacherActivity'][$day] ?? []) as $p => $teachers) {
+    if (isset($teachers[$tid])) $arr[] = $p;
+  }
+  $arr = array_values(array_unique(array_merge($arr, $newPeriods)));
   $cnt=0; 
   foreach($arr as $p) if(in_array($p,$LUNCH_SET,true)) $cnt++;
   return $cnt>=3;
 };
 
-$violatesCross = function(int $tid,int $day,int $p,string $cur) use(&$maps, &$classes, $isPrimary, $isSecondary){
-  $neighbors = [max(1,$p-1), $p+1];
+// ตรวจว่าครูต้องข้ามตึกในคาบติดกัน
+// ใช้ rooms.building ของห้องเรียนประจำ (classes.homeroom_room_id → rooms.building)
+// และ building ของสถานที่กิจกรรม (activity_groups.room_id → rooms.building)
+// ถ้า curBuilding ว่างเปล่า (ไม่ได้กำหนดอาคาร) จะข้ามการตรวจไป
+$violatesCross = function(int $tid, int $day, int $p, string $curBuilding) use (&$maps) {
+  if ($curBuilding === '') return false;
+  $neighbors = [max(1, $p - 1), $p + 1];
   foreach ($neighbors as $np) {
-    foreach (($maps['classBusy'][$day][$np] ?? []) as $cid => $v) {
-      if (isset($maps['teacherBusy'][$day][$np][$tid])) {
-        $g = (string)($classes[$cid]['grade_label'] ?? '');
-        if(($isPrimary($cur)&&$isSecondary($g))||($isSecondary($cur)&&$isPrimary($g))) return true;
-      }
+    if (isset($maps['teacherPeriodBuilding'][$day][$np][$tid])) {
+      $b = $maps['teacherPeriodBuilding'][$day][$np][$tid];
+      if ($b !== '' && $b !== $curBuilding) return true;
+    }
+    if (isset($maps['teacherActivityBuilding'][$day][$np][$tid])) {
+      $b = $maps['teacherActivityBuilding'][$day][$np][$tid];
+      if ($b !== '' && $b !== $curBuilding) return true;
     }
   }
   return false;
@@ -442,7 +454,7 @@ $coTeachers=function(array $L) use($pairStmt,$getTeacherByLoad,$year_id,$term_no
   return array_values(array_unique($ids));
 };
 
-$loadsStmt = $pdo->prepare("SELECT tl.id, tl.class_id, tl.teacher_id, tl.subject_id, tl.room_id, tl.periods_per_week, tl.consecutive_slots, c.class_name, c.grade_label, CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END AS label FROM teaching_loads tl JOIN subjects s ON s.id=tl.subject_id JOIN classes c ON c.id=tl.class_id WHERE tl.academic_year_id=? AND tl.term_no=? ORDER BY c.class_name, s.subject_name");
+$loadsStmt = $pdo->prepare("SELECT tl.id, tl.class_id, tl.teacher_id, tl.subject_id, tl.room_id, tl.periods_per_week, tl.consecutive_slots, c.class_name, c.grade_label, COALESCE(hr.building,'') AS class_building, CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END AS label FROM teaching_loads tl JOIN subjects s ON s.id=tl.subject_id JOIN classes c ON c.id=tl.class_id LEFT JOIN rooms hr ON hr.id = c.homeroom_room_id WHERE tl.academic_year_id=? AND tl.term_no=? ORDER BY c.class_name, s.subject_name");
 $loadsStmt->execute([$year_id,$term_no]);
 $loads=$loadsStmt->fetchAll();
 
@@ -484,7 +496,15 @@ $insMap =$pdo->prepare("INSERT INTO timetable_slot_teachers (slot_id, teacher_id
 $placed=0; $attempt=count($remain); $fails=[]; $logs=[];
 $failedLoads=[]; // เก็บรายการที่ยังลงไม่ครบหลังครบทุก pass
 
-// ✅ ฟังก์ชันนับจำนวนวันที่ครูสอน
+// BUG FIX: Precompute total load ต่อครูจาก $loads (คงที่ตลอด run)
+// เดิมใช้ &$remain ซึ่งลดลงเรื่อยๆ ทำให้ scoring กระจาย 5 วัน อ่อนลงในช่วงหลัง
+$teacherTotalLoads = [];
+foreach ($loads as $_L) {
+  $_tid = (int)$_L['teacher_id'];
+  $teacherTotalLoads[$_tid] = ($teacherTotalLoads[$_tid] ?? 0) + (int)$_L['periods_per_week'];
+}
+
+// ✅ ฟังก์ชันนับจำนวนวันที่ครูสอน (รวมวันที่มีกิจกรรมด้วย)
 $getTeacherDayDistribution = function(int $tid) use (&$maps) {
   $daysWithClasses = [];
   foreach (($maps['teacherBusy'] ?? []) as $day => $periods) {
@@ -495,18 +515,21 @@ $getTeacherDayDistribution = function(int $tid) use (&$maps) {
       }
     }
   }
+  // BUG FIX: รวมวันที่มีกิจกรรมด้วย เพื่อ scoring กระจาย 5 วันจะถูกต้อง
+  foreach (($maps['teacherActivity'] ?? []) as $day => $periods) {
+    foreach ($periods as $p => $teachers) {
+      if (isset($teachers[$tid])) {
+        $daysWithClasses[$day] = true;
+        break;
+      }
+    }
+  }
   return array_keys($daysWithClasses);
 };
 
-// ✅ ฟังก์ชันนับจำนวนคาบสอนรวมของครู
-$getTotalTeacherLoad = function(int $tid) use (&$remain) {
-  $total = 0;
-  foreach ($remain as $load) {
-    if ((int)$load['teacher_id'] === $tid) {
-      $total += (int)($load['left'] ?? 0);
-    }
-  }
-  return $total;
+// ✅ ฟังก์ชันนับภาระรวมของครู (ใช้ค่าคงที่จาก precompute ไม่ใช่ $remain ที่ลดลง)
+$getTotalTeacherLoad = function(int $tid) use ($teacherTotalLoads) {
+  return $teacherTotalLoads[$tid] ?? 0;
 };
 
 // ✅ Phase 1: Multi-Criteria Weighted Scoring
@@ -678,7 +701,7 @@ $estimateFeasibleCount = function(array $L, int $passNo, int $maxPasses) use (
       foreach ($tids as $tid) {
         if ($violatesConsec($tid, $d, $periodsToCheck)) continue 2;
         if ($violatesLunch($tid, $d, $periodsToCheck)) continue 2;
-        if ($violatesCross($tid, $d, $p, (string)$L['grade_label'])) continue 2;
+        if ($violatesCross($tid, $d, $p, (string)($L['class_building'] ?? ''))) continue 2;
       }
 
       $hasSameSubjectToday = isset($maps['subjectDay'][$d][(int)$L['class_id']][$L['label']]);
@@ -814,7 +837,7 @@ try{
             foreach($tids as $tid){
               if($violatesConsec($tid,$d,$periodsToCheck)){ $conf=true; $whyT='เกิน 4 คาบติดกัน'; break; }
               if($violatesLunch($tid,$d,$periodsToCheck)){ $conf=true; $whyT='คาบ 4-5-6 ไม่มีว่าง'; break; }
-              if($violatesCross($tid,$d,$p,(string)$L['grade_label'])){ $conf=true; $whyT='ข้ามตึกคาบติดกัน'; break; }
+              if($violatesCross($tid,$d,$p,(string)($L['class_building'] ?? ''))){ $conf=true; $whyT='ข้ามตึกคาบติดกัน'; break; }
             }
             if($conf){ $why=$whyT; continue; }
 
@@ -843,8 +866,8 @@ try{
             $slot = (int)$pdo->lastInsertId();
             foreach ($tids as $tid) $insMap->execute([$slot, $tid]);
             
-            // ✅ อัปเดท Maps หลัง insert
-            updateMapsAfterInsert($maps, $d, $currentPeriod, (int)$L['class_id'], $tids, $room_id, $L['label']);
+            // ✅ อัปเดท Maps หลัง insert (ส่ง grade_label เพื่ออัป teacherPeriodGrade)
+            updateMapsAfterInsert($maps, $d, $currentPeriod, (int)$L['class_id'], $tids, $room_id, $L['label'], (string)($L['class_building'] ?? ''));
             
             $placed++;
           }
@@ -970,6 +993,7 @@ try{
       $roomId = !empty($slotRow['room_id']) ? (int)$slotRow['room_id'] : null;
       $subj = (string)$slotRow['subject_name'];
       $grade = (string)($classes[$cid]['grade_label'] ?? '');
+      $building = (string)($classes[$cid]['class_building'] ?? '');
       $breaks = $getBreaks($grade);
 
       $days = [1,2,3,4,5];
@@ -1009,7 +1033,7 @@ try{
           foreach ($slotTeacherIds as $tid) {
             if ($violatesConsec($tid, $d, $periodsToCheck)) continue 2;
             if ($violatesLunch($tid, $d, $periodsToCheck)) continue 2;
-            if ($violatesCross($tid, $d, $p, $grade)) continue 2;
+            if ($violatesCross($tid, $d, $p, $building)) continue 2;
           }
 
           return ['day' => (int)$d, 'period' => (int)$p];
@@ -1083,7 +1107,7 @@ try{
             foreach ($tids as $tid) {
               if ($violatesConsec($tid, $d, $periodsToCheck)) { $conf=true; break; }
               if ($violatesLunch($tid, $d, $periodsToCheck)) { $conf=true; break; }
-              if ($violatesCross($tid, $d, $p, (string)$L['grade_label'])) { $conf=true; break; }
+              if ($violatesCross($tid, $d, $p, (string)($L['class_building'] ?? ''))) { $conf=true; break; }
             }
             if ($conf) continue;
 
@@ -1145,7 +1169,7 @@ try{
           $insSlot->execute([$year_id, $term_no, $d, $p, (int)$L['class_id'], (int)$L['teacher_id'], $L['label'], $room_id, 'auto']);
           $slotId = (int)$pdo->lastInsertId();
           foreach ($tids as $tid) $insMap->execute([$slotId, (int)$tid]);
-          updateMapsAfterInsert($maps, $d, $p, (int)$L['class_id'], $tids, $room_id, $L['label']);
+          updateMapsAfterInsert($maps, $d, $p, (int)$L['class_id'], $tids, $room_id, $L['label'], (string)($L['class_building'] ?? ''));
           $placed++;
           $placedThisRound = true;
           $logs[] = "  ✓ ซ่อมลงได้: วัน $d คาบ $p";

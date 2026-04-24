@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -62,22 +62,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
 
     <div>
-      <label class="block text-sm mb-1">ชื่อกลุ่มสาระ <span class="text-rose-500">*</span></label>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อกลุ่มสาระ <span class="text-rose-500">*</span></label>
       <input 
         name="name" 
-        class="w-full border rounded-lg px-3 py-2" 
+        class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" 
         required 
         value="<?= htmlspecialchars($_POST['name'] ?? $group['name'] ?? ''); ?>">
       <p class="text-xs text-slate-500 mt-1">ชื่อกลุ่มสาระต้องไม่ซ้ำกัน</p>
     </div>
 
     <div>
-      <label class="block text-sm mb-1">ลำดับการแสดงผล</label>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ลำดับการแสดงผล</label>
       <input 
         name="display_order" 
         type="number" 
         min="0"
-        class="w-full border rounded-lg px-3 py-2" 
+        class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" 
         value="<?= (int)($_POST['display_order'] ?? $group['display_order'] ?? 0); ?>">
       <p class="text-xs text-slate-500 mt-1">ใช้สำหรับเรียงลำดับในรายการต่างๆ (เลขน้อยขึ้นก่อน)</p>
     </div>
@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <div class="flex items-center gap-2 pt-2">
-      <button type="submit" class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">
+      <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
         บันทึก
       </button>
       <a href="<?= url('subject_groups.php'); ?>" class="px-4 py-2 rounded-xl border hover:bg-slate-50">

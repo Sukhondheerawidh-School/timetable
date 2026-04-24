@@ -358,13 +358,97 @@ foreach ($shifts as $s) {
 $totalRemaining = max(0, $totalNeed - $totalFilled);
 $progressPct = $totalNeed > 0 ? (int)round(($totalFilled / $totalNeed) * 100) : 0;
 
+// ✅ Pre-build presenter data for JS (Presenter Mode)
+$presenterShifts = [];
+foreach ($shifts as $sh) {
+  $shiftId = (int)$sh['id'];
+  $slotId  = (int)$sh['slot_id'];
+  $pDay    = (int)$sh['day_of_week'];
+  $pPno    = isset($sh['period_no']) && $sh['period_no'] !== null ? (int)$sh['period_no'] : null;
+  $as      = $assignments[$shiftId] ?? [];
+  $cap     = (int)$sh['required_count'];
+  $filled  = count($as);
+  $available = [];
+  foreach ($teachers as $t) {
+    $tid = (int)$t['id'];
+    if (!empty($dutyBusy[$pDay][$slotId][$tid])) continue;
+    if ($pPno !== null) {
+      if (!empty($busyTeach[$pDay][$pPno][$tid])) continue;
+      if (!empty($busyCons[$pDay][$pPno][$tid])) continue;
+    }
+    $available[] = $t;
+  }
+  $scored = [];
+  foreach ($available as $t) {
+    $tid = (int)$t['id'];
+    $cnt = (int)($dutyCount[$tid] ?? 0);
+    $adj = 0; $adjNotes = [];
+    if ($pPno !== null && $pPno > 0) {
+      $prev = $pPno - 1; $next = $pPno + 1;
+      $hasPrev = ($prev > 0 && !empty($busyTeach[$pDay][$prev][$tid]));
+      $hasNext = !empty($busyTeach[$pDay][$next][$tid]);
+      if ($hasPrev) { $adj++; $adjNotes[] = 'มีสอนคาบ '.$prev; }
+      if ($hasNext) { $adj++; $adjNotes[] = 'มีสอนคาบ '.$next; }
+      if ($pPno >= 4 && $pPno <= 6 && $adj === 1 && ($hasPrev xor $hasNext)) { $adj = 0; $adjNotes[] = 'คาบติดกันด้านเดียว'; }
+    }
+    $scored[] = ['t' => $t, 'cnt' => $cnt, 'adj' => $adj, 'adjNotes' => $adjNotes];
+  }
+  usort($scored, function($a, $b) {
+    if ($a['adj'] !== $b['adj']) return $a['adj'] <=> $b['adj'];
+    if ($a['cnt'] !== $b['cnt']) return $a['cnt'] <=> $b['cnt'];
+    return $a['t']['teacher_code'] <=> $b['t']['teacher_code'];
+  });
+  $bestCnt = null;
+  foreach ($scored as $rr) {
+    if ((int)$rr['adj'] !== 0) continue;
+    $c = (int)$rr['cnt'];
+    if ($bestCnt === null || $c < $bestCnt) $bestCnt = $c;
+  }
+  $presenterShifts[$shiftId] = [
+    'id'        => $shiftId,
+    'day'       => $pDay,
+    'slotId'    => $slotId,
+    'slotLabel' => (string)$sh['slot_label'],
+    'postName'  => (string)$sh['post_name'],
+    'cap'       => $cap,
+    'filled'    => $filled,
+    'assignees' => array_map(function($a) {
+      return ['id' => (int)$a['id'], 'teacherId' => (int)$a['teacher_id'],
+        'name' => ($a['teacher_code'] ? '['.$a['teacher_code'].'] ' : '').$a['first_name'].' '.$a['last_name']];
+    }, $as),
+    'teachers'  => array_map(function($r) use ($bestCnt) {
+      $t = $r['t'];
+      $best = ((int)$r['adj'] === 0) && $bestCnt !== null && ((int)$r['cnt'] === $bestCnt);
+      return ['id' => (int)$t['id'],
+        'name' => ($t['teacher_code'] ? '['.$t['teacher_code'].'] ' : '').$t['first_name'].' '.$t['last_name'],
+        'cnt' => (int)$r['cnt'], 'adj' => (int)$r['adj'],
+        'adjNotes' => $r['adjNotes'], 'best' => $best];
+    }, $scored),
+  ];
+}
+$pmJson = json_encode([
+  'csrf'        => csrf_token(),
+  'yearId'      => $year_id,
+  'termNo'      => $term_no,
+  'buildingId'  => $building_id,
+  'shifts'      => $presenterShifts,
+  'slots'       => array_values($slots),
+  'totalFilled' => $totalFilled,
+  'totalNeed'   => $totalNeed,
+  'progressPct' => $progressPct,
+], JSON_UNESCAPED_UNICODE);
+
 include __DIR__ . '/../partials/head.php';
 include __DIR__ . '/../partials/navbar.php';
 ?>
 <div class="w-full px-4 mt-8">
   <div class="max-w-7xl mx-auto">
-  <div class="mb-3">
+  <div class="mb-3 flex items-center justify-between gap-3 flex-wrap">
     <h1 class="text-xl font-semibold">🧑‍🏫 จัดเวรครู (รายเทอม)</h1>
+    <button type="button" onclick="ttPresenter.enter()"
+      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors shadow">
+      🖥️ โหมดจอใหญ่
+    </button>
   </div>
 
   <?php
@@ -376,15 +460,16 @@ include __DIR__ . '/../partials/navbar.php';
   ?>
 
   <?php if ($flash): ?>
-    <div class="mb-4 p-3 rounded <?= $flash['type']==='success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'; ?> text-sm">
-      <?= htmlspecialchars($flash['msg']); ?>
+    <div class="mb-4 p-3 rounded-xl flex items-start gap-2 <?= $flash['type']==='success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'; ?> text-sm">
+      <span class="text-base flex-shrink-0"><?= $flash['type']==='success' ? '✅' : '❌'; ?></span>
+      <span><?= htmlspecialchars($flash['msg']); ?></span>
     </div>
   <?php endif; ?>
   <?php if ($err): ?>
-    <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err) ?></div>
+    <div class="mb-4 p-3 rounded-xl flex items-start gap-2 bg-rose-50 text-rose-700 border border-rose-200 text-sm"><span class="text-base flex-shrink-0">❌</span><span><?= htmlspecialchars($err) ?></span></div>
   <?php endif; ?>
 
-  <form method="get" class="bg-white rounded-2xl shadow p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+  <form id="filterForm" method="get" class="bg-white rounded-2xl shadow p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-3">
     <div class="md:col-span-5">
       <label class="block text-xs mb-1">ปีการศึกษา</label>
       <select name="year_id" class="w-full border rounded px-3 py-2" onchange="this.form.submit()">
@@ -461,7 +546,7 @@ include __DIR__ . '/../partials/navbar.php';
       </div>
     </div>
     <div class="mt-3 h-3 w-full bg-slate-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow="<?= (int)$progressPct ?>" aria-valuemin="0" aria-valuemax="100">
-      <div class="h-full bg-sky-600" style="width: <?= (int)$progressPct ?>%"></div>
+      <div class="h-full bg-sky-600 transition-all duration-700" style="width: <?= (int)$progressPct ?>%"></div>
     </div>
   </div>
 
@@ -515,11 +600,13 @@ include __DIR__ . '/../partials/navbar.php';
                       <?php foreach ($cellShifts as $sh): ?>
                         <?php
                           $shiftIndex++;
-                          $shiftBg = ($shiftIndex % 2 === 1) ? 'bg-sky-100/80 border-sky-200' : 'bg-white border-slate-200';
                           $shiftId = (int)$sh['id'];
                           $as = $assignments[$shiftId] ?? [];
                           $cap = (int)$sh['required_count'];
                           $filled = count($as);
+                          $shiftBg = ($filled >= $cap)
+                            ? 'bg-emerald-50 border-emerald-200'
+                            : (($shiftIndex % 2 === 1) ? 'bg-sky-50/80 border-sky-100' : 'bg-white border-slate-200');
 
                           // Build available teacher list
                           $available = [];
@@ -583,6 +670,10 @@ include __DIR__ . '/../partials/navbar.php';
                               <span class="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700">ครบแล้ว</span>
                             <?php endif; ?>
                           </div>
+                          <?php $capPct = $cap > 0 ? min(100, (int)round($filled/$cap*100)) : 0; ?>
+                          <div class="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all <?= $filled>=$cap ? 'bg-emerald-400' : 'bg-sky-400'; ?>" style="width:<?= $capPct ?>%"></div>
+                          </div>
 
                           <?php if ($as): ?>
                             <div class="mt-2 space-y-1">
@@ -601,7 +692,7 @@ include __DIR__ . '/../partials/navbar.php';
                                     <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
                                     <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
                                     <input type="hidden" name="id" value="<?= (int)$a['id']; ?>">
-                                    <button class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
+                                    <button type="submit" class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
                                   </form>
                                 </div>
                               <?php endforeach; ?>
@@ -649,7 +740,7 @@ include __DIR__ . '/../partials/navbar.php';
                                 <?php endforeach; ?>
                                 </select>
                               </div>
-                              <button class="px-3 py-1.5 rounded bg-slate-900 text-white">ลง</button>
+                              <button type="submit" class="px-3 py-1.5 rounded bg-slate-900 text-white text-sm whitespace-nowrap">ลง</button>
                             </form>
                           <?php endif; ?>
                         </div>
@@ -706,11 +797,13 @@ include __DIR__ . '/../partials/navbar.php';
                     <?php foreach ($cellShifts as $sh): ?>
                       <?php
                         $shiftIndex++;
-                        $shiftBg = ($shiftIndex % 2 === 1) ? 'bg-sky-100/80 border-sky-200' : 'bg-white border-slate-200';
                         $shiftId = (int)$sh['id'];
                         $as = $assignments[$shiftId] ?? [];
                         $cap = (int)$sh['required_count'];
                         $filled = count($as);
+                        $shiftBg = ($filled >= $cap)
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : (($shiftIndex % 2 === 1) ? 'bg-sky-50/80 border-sky-100' : 'bg-white border-slate-200');
 
                         // Build available teacher list
                         $available = [];
@@ -771,6 +864,10 @@ include __DIR__ . '/../partials/navbar.php';
                             <span class="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700">ครบแล้ว</span>
                           <?php endif; ?>
                         </div>
+                        <?php $capPct = $cap > 0 ? min(100, (int)round($filled/$cap*100)) : 0; ?>
+                        <div class="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div class="h-full rounded-full transition-all <?= $filled>=$cap ? 'bg-emerald-400' : 'bg-sky-400'; ?>" style="width:<?= $capPct ?>%"></div>
+                        </div>
 
                         <?php if ($as): ?>
                           <div class="mt-2 space-y-1">
@@ -789,7 +886,7 @@ include __DIR__ . '/../partials/navbar.php';
                                   <input type="hidden" name="return_view" value="<?= htmlspecialchars($view); ?>">
                                   <input type="hidden" name="return_day" value="<?= (int)$day; ?>">
                                   <input type="hidden" name="id" value="<?= (int)$a['id']; ?>">
-                                  <button class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
+                                  <button type="submit" class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50">ลบ</button>
                                 </form>
                               </div>
                             <?php endforeach; ?>
@@ -837,7 +934,7 @@ include __DIR__ . '/../partials/navbar.php';
                               <?php endforeach; ?>
                               </select>
                             </div>
-                            <button class="px-3 py-1.5 rounded bg-slate-900 text-white">ลง</button>
+                            <button type="submit" class="px-3 py-1.5 rounded bg-slate-900 text-white text-sm whitespace-nowrap">ลง</button>
                           </form>
                         <?php endif; ?>
                       </div>
@@ -853,6 +950,20 @@ include __DIR__ . '/../partials/navbar.php';
       <?php endif; ?>
     </div>
   </div>
+</div>
+
+<!-- ✅ Presenter Mode Overlay -->
+<div id="ttPresenterOverlay" style="display:none;position:fixed;inset:0;z-index:200;background:#0f172a;flex-direction:column;overflow:hidden;">
+  <div style="background:#1e293b;border-bottom:1px solid #334155;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;">
+    <div style="font-size:1.1rem;font-weight:700;color:#f8fafc;white-space:nowrap;">🖥️ โหมดจอใหญ่ · จัดเวรครู</div>
+    <div id="pPresenterProgress" style="flex:1;min-width:0;"></div>
+    <button onclick="ttPresenter.exit()" style="padding:8px 16px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;flex-shrink:0;">✕ ออก (ESC)</button>
+  </div>
+  <div id="pPresenterGrid" style="flex:1;overflow:auto;padding:16px;"></div>
+</div>
+<!-- Presenter Teacher Picker Modal -->
+<div id="pPresenterModal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.75);align-items:center;justify-content:center;padding:24px;">
+  <div id="pPresenterModalBox" style="background:#1e293b;border:1px solid #334155;border-radius:20px;width:100%;max-width:820px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;"></div>
 </div>
 
 <script>
@@ -1061,6 +1172,273 @@ include __DIR__ . '/../partials/navbar.php';
     }
 
     document.addEventListener('DOMContentLoaded', init);
+  })();
+
+  // ✅ Loading overlay on filter change
+  (function() {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,0.65);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity 0.2s';
+    overlay.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div style="width:36px;height:36px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:ttSpin 0.7s linear infinite"></div><span style="font-size:0.85rem;color:#475569">กำลังโหลด...</span></div><style>@keyframes ttSpin{to{transform:rotate(360deg)}}</style>';
+    document.body.appendChild(overlay);
+    var filterForm = document.getElementById('filterForm');
+    if (filterForm) {
+      filterForm.addEventListener('submit', function() {
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+      });
+      var _origSubmit = filterForm.submit.bind(filterForm);
+      filterForm.submit = function() {
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+        _origSubmit();
+      };
+    }
+  })();
+
+  // ✅ Presenter Mode
+  var ttPresenter = (function () {
+    var PM = <?= $pmJson ?>;
+    var DOW = {1:'จันทร์',2:'อังคาร',3:'พุธ',4:'พฤหัส',5:'ศุกร์',6:'เสาร์',7:'อาทิตย์'};
+    var currentShiftId = null;
+
+    function esc(s) {
+      return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function enter() {
+      var el = document.getElementById('ttPresenterOverlay');
+      el.style.display = 'flex';
+      try { document.documentElement.requestFullscreen(); } catch(e){}
+      renderProgress();
+      renderGrid();
+      document.addEventListener('keydown', onKeyDown);
+      sessionStorage.setItem('tt_presenter_active','1');
+    }
+
+    function exit() {
+      document.getElementById('ttPresenterOverlay').style.display = 'none';
+      closeModal();
+      try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e){}
+      document.removeEventListener('keydown', onKeyDown);
+      sessionStorage.removeItem('tt_presenter_active');
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        if (document.getElementById('pPresenterModal').style.display !== 'none') { closeModal(); }
+        else { exit(); }
+      }
+    }
+
+    function renderProgress() {
+      var el = document.getElementById('pPresenterProgress');
+      var pct = PM.progressPct;
+      var color = pct >= 100 ? '#22c55e' : pct >= 50 ? '#eab308' : '#ef4444';
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;">'
+        +'<div style="flex:1;background:#334155;border-radius:999px;height:10px;overflow:hidden;">'
+        +'<div style="height:10px;border-radius:999px;background:'+color+';width:'+pct+'%;"></div></div>'
+        +'<span style="color:#94a3b8;font-size:0.85rem;white-space:nowrap;">ลงแล้ว '+PM.totalFilled+'/'+PM.totalNeed+' ช่อง ('+pct+'%)</span>'
+        +'</div>';
+    }
+
+    function renderGrid() {
+      var container = document.getElementById('pPresenterGrid');
+      var slotMap = {};
+      PM.slots.forEach(function(s) { slotMap[s.id] = s; });
+
+      var shiftBySlotDay = {};
+      Object.keys(PM.shifts).forEach(function(sid) {
+        var sh = PM.shifts[sid];
+        if (!shiftBySlotDay[sh.slotId]) shiftBySlotDay[sh.slotId] = {};
+        if (!shiftBySlotDay[sh.slotId][sh.day]) shiftBySlotDay[sh.slotId][sh.day] = [];
+        shiftBySlotDay[sh.slotId][sh.day].push(parseInt(sid));
+      });
+
+      var visibleSlotIds = Object.keys(shiftBySlotDay).map(Number);
+      visibleSlotIds.sort(function(a,b) {
+        return ((slotMap[a]||{}).sort_order||0) - ((slotMap[b]||{}).sort_order||0);
+      });
+
+      if (!visibleSlotIds.length) {
+        container.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px;font-size:1.3rem;">— ยังไม่มีเวรที่กำหนดไว้ —</div>';
+        return;
+      }
+
+      var days = [1,2,3,4,5];
+      var html = '<table style="width:100%;border-collapse:separate;border-spacing:8px;">';
+      html += '<thead><tr>';
+      html += '<th style="background:#1e293b;color:#64748b;font-size:0.85rem;padding:10px 14px;border-radius:10px;text-align:left;white-space:nowrap;">ช่วงเวลา</th>';
+      days.forEach(function(d) {
+        html += '<th style="background:#1e293b;color:#f1f5f9;font-size:1.15rem;font-weight:800;padding:12px;border-radius:10px;text-align:center;min-width:190px;">'+DOW[d]+'</th>';
+      });
+      html += '</tr></thead><tbody>';
+
+      visibleSlotIds.forEach(function(slotId) {
+        var slot = slotMap[slotId];
+        if (!slot) return;
+        var timeStr = (slot.start_time||'').substr(0,5)+'–'+(slot.end_time||'').substr(0,5);
+        html += '<tr>';
+        html += '<td style="background:#1e293b;border-radius:10px;padding:12px 14px;vertical-align:top;white-space:nowrap;">';
+        html += '<div style="font-size:1rem;font-weight:700;color:#f8fafc;">'+esc(slot.slot_label)+'</div>';
+        html += '<div style="font-size:0.8rem;color:#64748b;margin-top:3px;">'+esc(timeStr)+(slot.period_no ? ' · คาบ '+slot.period_no : '')+'</div>';
+        html += '</td>';
+        days.forEach(function(d) {
+          var shiftIds = (shiftBySlotDay[slotId] && shiftBySlotDay[slotId][d]) ? shiftBySlotDay[slotId][d] : [];
+          html += '<td style="vertical-align:top;padding:0;">';
+          if (!shiftIds.length) {
+            html += '<div style="min-height:72px;background:#0f172a;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#1e293b;font-size:1.2rem;">—</div>';
+          } else {
+            shiftIds.forEach(function(sid) { html += renderShiftCard(sid); });
+          }
+          html += '</td>';
+        });
+        html += '</tr>';
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function renderShiftCard(shiftId) {
+      var sh = PM.shifts[shiftId];
+      if (!sh) return '';
+      var isFull = sh.filled >= sh.cap;
+      var isEmpty = sh.filled === 0;
+      var pct = sh.cap > 0 ? Math.min(100, Math.round(sh.filled / sh.cap * 100)) : 0;
+      var bg     = isFull ? '#052e16' : isEmpty ? '#3b0a0a' : '#1c1917';
+      var border = isFull ? '#16a34a' : isEmpty ? '#dc2626' : '#ca8a04';
+      var dot    = isFull ? '#22c55e' : isEmpty ? '#ef4444' : '#eab308';
+      var statusTxt   = isFull ? '✓ ครบแล้ว' : sh.filled+'/'+sh.cap+' คน';
+      var statusColor = isFull ? '#86efac' : isEmpty ? '#fca5a5' : '#fde68a';
+      var names = sh.assignees.map(function(a){ return a.name.replace(/\[.*?\]\s*/,''); }).join(', ');
+
+      return '<div onclick="ttPresenter.openModal('+shiftId+')"'
+        +' style="background:'+bg+';border:2px solid '+border+';border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer;"'
+        +' onmouseover="this.style.opacity=\'0.82\'" onmouseout="this.style.opacity=\'1\'" >'
+        +'<div style="display:flex;align-items:flex-start;gap:8px;">'
+        +'<span style="width:10px;height:10px;border-radius:50%;background:'+dot+';flex-shrink:0;margin-top:4px;"></span>'
+        +'<div style="flex:1;min-width:0;">'
+        +'<div style="font-size:1rem;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(sh.postName)+'</div>'
+        +'<div style="font-size:0.82rem;font-weight:600;color:'+statusColor+';margin-top:2px;">'+statusTxt+'</div>'
+        +'</div></div>'
+        +'<div style="height:4px;background:#1e293b;border-radius:999px;overflow:hidden;margin:8px 0 4px;">'
+        +'<div style="height:4px;background:'+dot+';width:'+pct+'%;border-radius:999px;"></div></div>'
+        +(names ? '<div style="font-size:0.75rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(names)+'</div>' : '')
+        +'</div>';
+    }
+
+    function openModal(shiftId) {
+      currentShiftId = shiftId;
+      var sh = PM.shifts[shiftId];
+      if (!sh) return;
+      document.getElementById('pPresenterModal').style.display = 'flex';
+      renderModal(sh);
+    }
+
+    function closeModal() {
+      document.getElementById('pPresenterModal').style.display = 'none';
+      currentShiftId = null;
+    }
+
+    function renderModal(sh) {
+      var dayLabel = DOW[sh.day] || '';
+      var isFull = sh.filled >= sh.cap;
+      var dot = isFull ? '#22c55e' : sh.filled === 0 ? '#ef4444' : '#eab308';
+      var html = '';
+
+      // Header
+      html += '<div style="background:#0f172a;border-bottom:1px solid #334155;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0;">';
+      html += '<div><div style="display:flex;align-items:center;gap:10px;">'
+        +'<span style="width:14px;height:14px;border-radius:50%;background:'+dot+';flex-shrink:0;"></span>'
+        +'<span style="font-size:1.6rem;font-weight:800;color:#f8fafc;">'+esc(sh.postName)+'</span></div>'
+        +'<div style="margin-top:5px;color:#64748b;font-size:1rem;">'
+        +esc(sh.slotLabel)+' · วัน'+dayLabel+' · ต้องการ '+sh.cap+' คน'
+        +(sh.filled ? ' (ลงแล้ว '+sh.filled+' คน)' : '')
+        +'</div></div>';
+      html += '<button onclick="ttPresenter.closeModal()" style="padding:10px 18px;background:#374151;color:#f8fafc;border:none;border-radius:10px;font-size:1rem;cursor:pointer;font-weight:600;flex-shrink:0;">✕ ปิด</button>';
+      html += '</div>';
+
+      // Body
+      html += '<div style="overflow-y:auto;padding:20px 24px;flex:1;">';
+
+      // Current assignees
+      if (sh.assignees.length) {
+        html += '<div style="margin-bottom:22px;">';
+        html += '<div style="font-size:0.75rem;font-weight:800;color:#475569;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">✅ ลงเวรแล้ว</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+        sh.assignees.forEach(function(a) {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#0f172a;border:1px solid #22c55e;border-radius:14px;padding:14px 18px;">';
+          html += '<span style="font-size:1.15rem;font-weight:700;color:#f8fafc;">'+esc(a.name)+'</span>';
+          html += '<form method="post" onsubmit="sessionStorage.setItem(\'tt_presenter_active\',\'1\');" style="margin:0;">';
+          html += hiddenFields(sh.id) + '<input type="hidden" name="action" value="unassign"><input type="hidden" name="id" value="'+a.id+'">';
+          html += '<button type="submit" style="padding:10px 20px;background:#7f1d1d;color:#fca5a5;border:1px solid #dc2626;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">🗑️ ยกเลิก</button>';
+          html += '</form></div>';
+        });
+        html += '</div></div>';
+      }
+
+      // Available teachers
+      if (!isFull) {
+        html += '<div><div style="font-size:0.75rem;font-weight:800;color:#475569;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">เลือกครู</div>';
+        if (!sh.teachers.length) {
+          html += '<div style="color:#64748b;text-align:center;padding:40px;font-size:1.05rem;">— ไม่มีครูที่ว่างในช่วงเวลานี้ —</div>';
+        } else {
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">';
+          sh.teachers.forEach(function(t) {
+            var bg, border, badge = '', cntColor;
+            if (t.best) {
+              bg = '#052e16'; border = '#16a34a'; cntColor = '#22c55e';
+              badge = '<span style="background:#14532d;color:#86efac;font-size:0.72rem;font-weight:800;padding:4px 10px;border-radius:999px;">⭐ แนะนำ</span>';
+            } else if (t.adj > 0) {
+              bg = '#1c1400'; border = '#92400e'; cntColor = '#fbbf24';
+              badge = '<span style="background:#451a03;color:#fde68a;font-size:0.72rem;font-weight:800;padding:4px 10px;border-radius:999px;">⚠️ สอนติดกัน</span>';
+            } else {
+              bg = '#0f172a'; border = '#334155'; cntColor = '#64748b';
+            }
+            var adjTxt = (t.adjNotes && t.adjNotes.length) ? '<div style="font-size:0.75rem;color:#94a3b8;margin-top:3px;">'+esc(t.adjNotes.join(' · '))+'</div>' : '';
+            html += '<form method="post" onsubmit="sessionStorage.setItem(\'tt_presenter_active\',\'1\');" style="margin:0;">';
+            html += hiddenFields(sh.id) + '<input type="hidden" name="action" value="assign"><input type="hidden" name="teacher_id" value="'+t.id+'">';
+            html += '<button type="submit" style="width:100%;text-align:left;background:'+bg+';border:2px solid '+border
+              +';border-radius:14px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;"'
+              +' onmouseover="this.style.opacity=\'0.82\'" onmouseout="this.style.opacity=\'1\'">';
+            html += '<div style="width:42px;height:42px;border-radius:50%;background:#1e293b;border:2px solid '+border
+              +';display:flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:900;color:'+cntColor+';flex-shrink:0;">'+t.cnt+'</div>';
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-size:1.05rem;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name)+'</div>';
+            html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+badge
+              +'<span style="font-size:0.78rem;color:#64748b;">รับแล้ว '+t.cnt+' เวร</span></div>';
+            html += adjTxt + '</div></button></form>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      } else {
+        html += '<div style="text-align:center;padding:40px;color:#86efac;font-size:1.2rem;font-weight:700;">✅ เวรนี้ครบจำนวนแล้ว</div>';
+      }
+
+      html += '</div>'; // end body
+      document.getElementById('pPresenterModalBox').innerHTML = html;
+    }
+
+    function hiddenFields(shiftId) {
+      return '<input type="hidden" name="csrf" value="'+esc(PM.csrf)+'">'
+        +'<input type="hidden" name="year_id" value="'+PM.yearId+'">'
+        +'<input type="hidden" name="term_no" value="'+PM.termNo+'">'
+        +'<input type="hidden" name="building_id" value="'+PM.buildingId+'">'
+        +'<input type="hidden" name="shift_id" value="'+shiftId+'">'
+        +'<input type="hidden" name="return_shift_id" value="'+shiftId+'">'
+        +'<input type="hidden" name="return_view" value="week">';
+    }
+
+    // Auto-restore after page reload (post-assign/unassign)
+    document.addEventListener('DOMContentLoaded', function() {
+      if (sessionStorage.getItem('tt_presenter_active') === '1') {
+        sessionStorage.removeItem('tt_presenter_active');
+        setTimeout(enter, 80);
+      }
+    });
+
+    return { enter: enter, exit: exit, openModal: openModal, closeModal: closeModal };
   })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

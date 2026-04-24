@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // public/co_teaching.php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
@@ -235,7 +235,7 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
 
     <?php if ($err): ?>
-        <div class="mb-3 p-3 rounded bg-rose-50 text-rose-700"><?= esc($err) ?></div>
+        <div class="mb-4 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-center gap-2"><span>❌</span><span><?= esc($err) ?></span></div>
     <?php elseif ($success): ?>
         <div class="mb-3 p-3 rounded bg-emerald-50 text-emerald-700"><?= esc($success) ?></div>
     <?php endif; ?>
@@ -352,7 +352,7 @@ include __DIR__ . '/../partials/navbar.php';
             </div>
 
             <div class="mt-4 flex items-center gap-3">
-                <button type="submit" class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">
+                <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
                     💾 บันทึกคู่สอนร่วมที่เลือก
                 </button>
                 <span id="selected-summary" class="text-sm text-slate-500"></span>

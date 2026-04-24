@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 
@@ -68,7 +68,7 @@ $flash = flash_get();
   <div class="flex items-center justify-between mt-8 mb-4">
     <h1 class="text-xl font-semibold">🎯 วิชากิจกรรม (เรียนรวม)</h1>
     <div class="flex gap-2">
-      <a href="<?= url('activity_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">➕ เพิ่มกิจกรรม</a>
+      <a href="<?= url('activity_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">➕ เพิ่มกิจกรรม</a>
     </div>
   </div>
 

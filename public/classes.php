@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -27,6 +27,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
   }
 }
 
+// ✅ เพิ่มห้องเดี่ยว
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_single') {
+  if (!verify_csrf($_POST['csrf'] ?? '')) {
+    flash_set('error', 'CSRF token ไม่ถูกต้อง');
+  } else {
+    $grade = trim($_POST['grade_label'] ?? '');
+    $section = (int)($_POST['section_no'] ?? 0);
+    if ($grade === '' || $section < 1) {
+      flash_set('error', 'กรอกชื่อชั้นและหมายเลขห้องให้ถูกต้อง');
+    } else {
+      try {
+        $name = $grade . '/' . $section;
+        $stmt = $pdo->prepare('INSERT INTO classes(grade_label, section_no, class_name) VALUES (?,?,?)');
+        $stmt->execute([$grade, $section, $name]);
+        flash_set('success', "เพิ่ม {$name} เรียบร้อย");
+      } catch (Throwable $e) {
+        if (str_contains($e->getMessage(), 'Duplicate')) {
+          flash_set('error', "ห้อง {$grade}/{$section} มีอยู่แล้ว");
+        } else {
+          flash_set('error', 'เกิดข้อผิดพลาด: '.$e->getMessage());
+        }
+      }
+    }
+  }
+  redirect('classes.php');
+}
+
 /** ดึงรายการชั้นเรียน: เรียงตาม grade_label แล้วต่อด้วย section_no */
 $sql = <<<SQL
 SELECT
@@ -50,7 +77,8 @@ $classes = $stmt->fetchAll();
   <div class="flex items-center justify-between mt-8 mb-4">
     <h1 class="text-xl font-semibold">ชั้นเรียน</h1>
     <div class="flex gap-2">
-      <a href="<?= url('class_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">+ สร้างชั้น/ห้องแบบรวดเร็ว</a>
+      <button type="button" id="btnAddSingle" class="px-3 py-2 rounded-xl border border-slate-700 text-slate-700 hover:bg-slate-50 text-sm">+ เพิ่มห้องเดี่ยว</button>
+      <a href="<?= url('class_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">+ สร้างชั้น/ห้องแบบรวดเร็ว</a>
       <button type="button" id="btnDeleteAll" class="px-3 py-2 rounded-xl border border-rose-600 text-rose-600 hover:bg-rose-50 text-sm">
         🗑️ ลบชั้นทั้งหมด
       </button>
@@ -126,12 +154,45 @@ $classes = $stmt->fetchAll();
   <input type="hidden" name="action" value="delete_all">
 </form>
 
+<!-- ✅ Modal เพิ่มห้องเดี่ยว -->
+<div id="modalAddSingle" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+    <h2 class="text-lg font-semibold mb-4">เพิ่มห้องเดี่ยว</h2>
+    <form method="post" class="space-y-4">
+      <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+      <input type="hidden" name="action" value="add_single">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อชั้น</label>
+        <input name="grade_label" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required placeholder="เช่น อ2, ป1, ม.1">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">หมายเลขห้อง</label>
+        <input type="number" name="section_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" min="1" max="99" required placeholder="เช่น 3">
+      </div>
+      <p class="text-xs text-slate-500">ตัวอย่าง: ชั้น อ2 ห้อง 3 → อ2/3</p>
+      <div class="flex items-center gap-2 pt-1">
+        <button class="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm hover:opacity-90">เพิ่ม</button>
+        <button type="button" id="btnCloseModal" class="px-4 py-2 rounded-xl border text-sm">ยกเลิก</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
 <script>
 // ✅ ปุ่มลบห้องทั้งหมด
 const btnDeleteAll = document.getElementById('btnDeleteAll');
 const deleteAllForm = document.getElementById('deleteAllForm');
+
+// ✅ Modal เพิ่มห้องเดี่ยว
+const modal = document.getElementById('modalAddSingle');
+document.getElementById('btnAddSingle').addEventListener('click', () => {
+  modal.classList.remove('hidden');
+  modal.querySelector('[name="grade_label"]').focus();
+});
+document.getElementById('btnCloseModal').addEventListener('click', () => modal.classList.add('hidden'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
 
 btnDeleteAll.addEventListener('click', () => {
   ttDoubleConfirmSubmit(

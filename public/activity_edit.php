@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -123,15 +123,15 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
 
 <div class="max-w-3xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">แก้ไขวิชากิจกรรม</h1>
-  <?php if($err): ?><div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div><?php endif; ?>
+  <?php if($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
 
-  <form method="post" class="bg-white rounded-2xl shadow p-6 space-y-4">
+  <form method="post" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
     <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
 
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm mb-1">ปีการศึกษา</label>
-        <select name="academic_year_id" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ปีการศึกษา</label>
+        <select name="academic_year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <?php foreach($years as $y): ?>
             <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id']===(int)$formYearId?'selected':''; ?>>
               <?= htmlspecialchars($y['year_label']).($y['is_active']?' (ใช้งาน)':''); ?>
@@ -140,8 +140,8 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">เทอม</label>
-        <select name="term_no" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">เทอม</label>
+        <select name="term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <?php foreach ($termOptions as $t): ?>
             <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$t['term_no'] === (int)$formTermNo) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
           <?php endforeach; ?>
@@ -150,22 +150,22 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <div>
-      <label class="block text-sm mb-1">ชื่อกิจกรรม</label>
-      <input name="activity_name" class="w-full border rounded-lg px-3 py-2" required value="<?= htmlspecialchars($_POST['activity_name'] ?? $act['activity_name']); ?>">
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อกิจกรรม</label>
+      <input name="activity_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['activity_name'] ?? $act['activity_name']); ?>">
     </div>
 
     <div class="grid md:grid-cols-3 gap-4">
       <div>
-        <label class="block text-sm mb-1">วัน</label>
-        <select name="day_of_week" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">วัน</label>
+        <select name="day_of_week" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <?php foreach (th_dow_opts() as $k=>$v): ?>
             <option value="<?= (int)$k; ?>" <?= ((int)($_POST['day_of_week'] ?? $act['day_of_week'])===$k)?'selected':''; ?>><?= $v; ?></option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">คาบ</label>
-        <select name="period_no" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบ</label>
+        <select name="period_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <?php foreach($periods as $p): ?>
             <option value="<?= (int)$p['period_no']; ?>" <?= ((int)($_POST['period_no'] ?? $act['period_no'])===(int)$p['period_no'])?'selected':''; ?>>
               คาบ <?= (int)$p['period_no']; ?> (<?= substr($p['start_time'],0,5); ?>–<?= substr($p['end_time'],0,5); ?>)
@@ -174,8 +174,8 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">สถานที่รวม (ถ้ามี)</label>
-        <select name="room_id" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">สถานที่รวม (ถ้ามี)</label>
+        <select name="room_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="">— ไม่กำหนด —</option>
           <?php foreach($rooms as $r): ?>
             <option value="<?= (int)$r['id']; ?>" <?= ((string)($_POST['room_id'] ?? $act['room_id']) !== '' && (int)$r['id']===(int)($_POST['room_id'] ?? $act['room_id']))?'selected':''; ?>>
@@ -187,7 +187,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <div>
-      <label class="block text-sm mb-1">ชั้น/ห้องที่ร่วม (เลือกหลายรายการ)</label>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชั้น/ห้องที่ร่วม (เลือกหลายรายการ)</label>
 
       <input 
         type="text" 
@@ -224,7 +224,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
 
     <!-- ✅ ครู - แบบเช็กบ็อกซ์ + ค้นหา (ลอกจากหน้า create) -->
     <div>
-      <label class="block text-sm mb-1 font-semibold">ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span></label>
+      <label class="block text-sm font-semibold text-slate-700 mb-1.5">ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span></label>
 
       <!-- ช่องค้นหา -->
       <input 
@@ -263,8 +263,8 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <div class="flex items-center gap-2">
-      <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-      <a href="<?= url('activities.php?year_id='.(int)$act['academic_year_id'].'&term_no='.(int)$act['term_no']); ?>" class="px-4 py-2 rounded-xl border">ยกเลิก</a>
+      <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+      <a href="<?= url('activities.php?year_id='.(int)$act['academic_year_id'].'&term_no='.(int)$act['term_no']); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ยกเลิก</a>
     </div>
   </form>
 </div>

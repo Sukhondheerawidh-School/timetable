@@ -1456,223 +1456,229 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
 ?>
 <div class="max-w-6xl mx-auto px-4 py-6 space-y-6">
   <div class="bg-white border border-gray-200 rounded-2xl shadow-sm">
-    <div class="px-5 py-4 border-b border-gray-200">
-      <h2 class="text-lg font-semibold text-slate-900">รายงานตารางสอน</h2>
-    </div>
-
-    <!-- เริ่ม: ฟอร์มอัพโหลดโลโก้ (แสดงเฉพาะ Admin) -->
-    <?php if($isAdmin): ?>
-    <div class="px-5 py-4 border-b border-gray-50 bg-gradient-to-r from-purple-50 to-pink-50">
-      <div class="flex items-center gap-2 mb-3">
-        <span class="text-xs font-semibold bg-purple-100 text-purple-700 px-2 py-1 rounded-full">🔑 Admin Only</span>
-        <span class="text-sm text-gray-600">จัดการโลโก้</span>
-      </div>
-      <form method="post" enctype="multipart/form-data" class="flex items-center gap-4">
-        <div class="flex items-center gap-3">
-          <?php if($hasLogo): ?>
-            <img src="<?= h($logoVers) ?>" alt="logo" style="height:48px;width:auto;border:1px solid #e5e7eb;padding:4px;border-radius:6px">
-          <?php else: ?>
-            <div style="height:48px;width:72px;border:1px dashed #e5e7eb;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#9ca3af">No logo</div>
-          <?php endif; ?>
-        </div>
-        <div class="flex items-center gap-2">
-          <input type="file" name="logo" accept="image/*" class="rounded-md border-gray-200 text-sm" />
-          <button type="submit" name="upload_logo" class="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 text-sm font-medium transition">อัปโหลดโลโก้</button>
-        </div>
-        <div class="text-xs text-gray-500">ไฟล์จะถูกแปลงเป็น PNG อัตโนมัติ</div>
-      </form>
-    </div>
-    <?php endif; ?>
-    <!-- จบ: ฟอร์มอัพโหลดโลโก้ -->
-
-    <!-- เริ่ม: ฟอร์มอัพโหลดลายเซ็นผู้อำนวยการ (แสดงเฉพาะ Admin) -->
-    <?php if($isAdmin): ?>
-    <div class="px-5 py-4 border-b border-gray-50 bg-gradient-to-r from-slate-50 to-gray-50">
-      <div class="flex items-center gap-2 mb-3">
-        <span class="text-xs font-semibold bg-slate-200 text-slate-700 px-2 py-1 rounded-full">🔑 Admin Only</span>
-        <span class="text-sm text-gray-600">จัดการลายเซ็นผู้อำนวยการ</span>
-      </div>
-      <form method="post" enctype="multipart/form-data" class="flex items-center gap-4">
-        <div class="flex items-center gap-3">
-          <?php if($hasDirectorSign): ?>
-            <img src="<?= h($directorSignVers) ?>" alt="signature" style="height:48px;width:auto;border:1px solid #e5e7eb;padding:6px;border-radius:6px;background:#fff">
-          <?php else: ?>
-            <div style="height:48px;width:120px;border:1px dashed #e5e7eb;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#9ca3af;background:#fff">No signature</div>
-          <?php endif; ?>
-        </div>
-        <div class="flex items-center gap-2">
-          <input type="file" name="director_sign" accept="image/*" class="rounded-md border-gray-200 text-sm" />
-          <button type="submit" name="upload_director_sign" class="rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3 py-2 text-sm font-medium transition">อัปโหลดลายเซ็น</button>
-        </div>
-        <div class="text-xs text-gray-500">ไฟล์จะถูกแปลงเป็น PNG อัตโนมัติ</div>
-      </form>
-    </div>
-    <?php endif; ?>
-    <!-- จบ: ฟอร์มอัพโหลดลายเซ็นผู้อำนวยการ -->
-
-    <form method="get" id="filterForm" class="p-5 grid md:grid-cols-6 grid-cols-2 gap-4 items-end bg-slate-50 rounded-b-2xl">
-      <input type="hidden" name="__apply" value="1">
-      <div>
-        <label class="text-sm text-slate-600">มุมมอง</label>
-        <select name="view" id="f_view" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-          <option value="class"  <?= $view==='class'?'selected':''; ?>>ตามห้อง</option>
-          <option value="teacher"<?= $view==='teacher'?'selected':''; ?>>ตามครู</option>
-          <option value="room"   <?= $view==='room'?'selected':''; ?>>ตามห้องเรียน</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="text-sm text-slate-600">ปีการศึกษา</label>
-        <select name="year_id" id="f_year" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-          <?php foreach($years as $y): ?>
-          <option value="<?= (int)$y['id'] ?>" <?= (int)$y['id']===$year_id?'selected':''; ?>><?= h($y['year_label']) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <div>
-        <label class="text-sm text-slate-600">เทอม</label>
-        <select name="term_no" id="f_term" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-          <?php foreach ($termOptions as $t): ?>
-            <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$term_no === (int)$t['term_no']) ? 'selected' : ''; ?>><?= h($t['term_name']); ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <?php if($view==='class'): ?>
-        <div class="md:col-span-2">
-          <label class="text-sm text-slate-600">ชั้น/ห้อง</label>
-          <select name="class_id" id="f_class" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-            <option value="all" <?= $class_id==='all'?'selected':''; ?>>— ทุกห้อง —</option>
-            <?php foreach($classes as $c): ?>
-              if ($only_has_timetable_class && empty($classHasTimetable[(int)$c['id']]) && (string)$class_id!==(string)$c['id']) continue; ?>
-            <option value="<?= (int)$c['id'] ?>" <?= (string)$class_id===(string)$c['id']?'selected':''; ?>>
-              <?= h($c['class_name']) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div class="flex items-center">
-          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
-            <input type="checkbox" name="only_has_timetable_class" id="f_only_has_timetable_class" value="1" <?= $only_has_timetable_class?'checked':''; ?>>
-            เลือกเฉพาะห้องที่มีตารางสอน
-          </label>
-        </div>
-
-      <?php elseif($view==='teacher'): ?>
-        <div>
-          <label class="text-sm text-slate-600">กลุ่มสาระ</label>
-          <select name="teacher_group" id="f_group" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-            <option value="all" <?= $teacher_group==='all'?'selected':''; ?>>— ทั้งหมด —</option>
-            <?php foreach($groupMap as $gid=>$gn): ?>
-            <option value="<?= $gid ?>" <?= (string)$teacher_group===(string)$gid?'selected':''; ?>>
-              <?= h($gn) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div>
-          <label class="text-sm text-slate-600">ครู</label>
-          <select name="teacher_id" id="f_teacher" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-            <option value="all" <?= $teacher_id==='all'?'selected':''; ?>>— ทุกคน —</option>
-            <?php foreach($teachers as $t):
-              if($only_has_timetable && empty($teacherHasTimetable[(int)$t['id']])) continue;
-              if($teacher_group!=='all' && (string)$t['subject_group']!==(string)$teacher_group) continue; ?>
-            <option value="<?= (int)$t['id'] ?>" <?= (string)$teacher_id===(string)$t['id']?'selected':''; ?>>
-              <?= h($t['first_name'].' '.$t['last_name']) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div class="flex items-center">
-          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
-            <input type="checkbox" name="only_has_timetable" id="f_only_has_timetable" value="1" <?= $only_has_timetable?'checked':''; ?>>
-            เลือกเฉพาะครูที่มีตารางสอน
-          </label>
-        </div>
-
-      <?php elseif($view==='room'): ?>
-        <div class="md:col-span-2">
-          <label class="text-sm text-slate-600">เลือกห้อง</label>
-          <select name="room_id" id="f_room" class="w-full mt-1 rounded-xl border-gray-300 bg-white">
-            <option value="all" <?= ($_GET['room_id']??'all')==='all'?'selected':''; ?>>— ทุกห้อง —</option>
-            <?php foreach($rooms as $r):
-              if ($only_has_timetable_room && empty($roomHasTimetable[(int)$r['id']]) && (string)($_GET['room_id']??'all')!==(string)$r['id']) continue; ?>
-            <option value="<?= (int)$r['id'] ?>" <?= (string)($_GET['room_id']??'all')===(string)$r['id']?'selected':''; ?>>
-              <?= h($r['room_name']) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div class="flex items-center">
-          <label class="inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
-            <input type="checkbox" name="only_has_timetable_room" id="f_only_has_timetable_room" value="1" <?= $only_has_timetable_room?'checked':''; ?>>
-            เลือกเฉพาะห้องเรียนที่มีตารางใช้ห้อง
-          </label>
-        </div>
+    <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold text-slate-900">📄 รายงานตารางสอน</h2>
+      <?php if($applied): ?>
+        <span class="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full">✅ แสดงตัวอย่างแล้ว</span>
+      <?php else: ?>
+        <span class="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200 px-3 py-1.5 rounded-full">⚙️ ตั้งค่าแล้วกด "แสดงตัวอย่าง"</span>
       <?php endif; ?>
+    </div>
 
-      <div class="md:col-span-2">
-        <label class="text-sm text-slate-600">ชื่อโรงเรียน</label>
-        <input type="text" name="school_name" id="f_school" class="w-full mt-1 rounded-xl border-gray-300 bg-white" value="<?= h($school_name) ?>">
+    <!-- Admin: โลโก้ + ลายเซ็น (collapsible) -->
+    <?php if($isAdmin): ?>
+    <details class="border-b border-gray-100">
+      <summary class="px-5 py-3 cursor-pointer select-none flex items-center gap-2 hover:bg-slate-50 list-none">
+        <span class="text-xs font-semibold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">🔑 Admin</span>
+        <span class="text-sm font-medium text-slate-700">จัดการโลโก้ & ลายเซ็นผู้อำนวยการ</span>
+        <svg class="ml-auto h-4 w-4 text-slate-400 transition-transform details-chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.24 4.5a.75.75 0 0 1-1.08 0l-4.24-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+      </summary>
+      <div class="px-5 pb-4 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/60">
+        <div>
+          <p class="text-xs font-semibold text-slate-500 mb-2">โลโก้โรงเรียน</p>
+          <form method="post" enctype="multipart/form-data" class="flex items-center gap-3 flex-wrap">
+            <?php if($hasLogo): ?>
+              <img src="<?= h($logoVers) ?>" alt="logo" class="h-12 w-auto border border-gray-200 rounded-lg p-1 bg-white">
+            <?php else: ?>
+              <div class="h-12 w-20 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 bg-white">ไม่มีโลโก้</div>
+            <?php endif; ?>
+            <input type="file" name="logo" accept="image/*" class="text-sm text-slate-600 flex-1 min-w-0">
+            <button type="submit" name="upload_logo" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition whitespace-nowrap">อัปโหลด</button>
+          </form>
+          <p class="text-xs text-slate-400 mt-1.5">แปลงเป็น PNG อัตโนมัติ</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-slate-500 mb-2">ลายเซ็นผู้อำนวยการ</p>
+          <form method="post" enctype="multipart/form-data" class="flex items-center gap-3 flex-wrap">
+            <?php if($hasDirectorSign): ?>
+              <img src="<?= h($directorSignVers) ?>" alt="signature" class="h-12 w-auto border border-gray-200 rounded-lg p-1 bg-white">
+            <?php else: ?>
+              <div class="h-12 w-28 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 bg-white">ไม่มีลายเซ็น</div>
+            <?php endif; ?>
+            <input type="file" name="director_sign" accept="image/*" class="text-sm text-slate-600 flex-1 min-w-0">
+            <button type="submit" name="upload_director_sign" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-lg transition whitespace-nowrap">อัปโหลด</button>
+          </form>
+          <p class="text-xs text-slate-400 mt-1.5">แปลงเป็น PNG อัตโนมัติ</p>
+        </div>
       </div>
+    </details>
+    <style>details[open] .details-chevron { transform: rotate(180deg); } details summary::-webkit-details-marker { display: none; }</style>
+    <?php endif; ?>
 
+    <form method="get" id="filterForm" class="p-5 space-y-5">
+      <input type="hidden" name="__apply" value="1">
+
+      <!-- Section 1: ข้อมูลหลัก -->
       <div>
-        <label class="text-sm text-slate-600">พิมพ์ ณ วันที่</label>
-        <input type="date" name="printed_at" id="f_printed" class="w-full mt-1 rounded-xl border-gray-300 bg-white" value="<?= h($printed_at) ?>">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">🔍 เลือกรายงาน</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">มุมมอง</label>
+            <select name="view" id="f_view" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+              <option value="class"  <?= $view==='class'?'selected':''; ?>>📚 ตามห้อง</option>
+              <option value="teacher"<?= $view==='teacher'?'selected':''; ?>>👨‍🏫 ตามครู</option>
+              <option value="room"   <?= $view==='room'?'selected':''; ?>>🚪 ตามห้องเรียน</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">ปีการศึกษา</label>
+            <select name="year_id" id="f_year" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+              <?php foreach($years as $y): ?>
+              <option value="<?= (int)$y['id'] ?>" <?= (int)$y['id']===$year_id?'selected':''; ?>><?= h($y['year_label']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">เทอม</label>
+            <select name="term_no" id="f_term" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+              <?php foreach ($termOptions as $t): ?>
+                <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$term_no === (int)$t['term_no']) ? 'selected' : ''; ?>><?= h($t['term_name']); ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+
+          <?php if($view==='class'): ?>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">ห้อง</label>
+              <select name="class_id" id="f_class" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+                <option value="all" <?= $class_id==='all'?'selected':''; ?>>— ทุกห้อง —</option>
+                <?php foreach($classes as $c):
+                  if ($only_has_timetable_class && empty($classHasTimetable[(int)$c['id']]) && (string)$class_id!==(string)$c['id']) continue; ?>
+                <option value="<?= (int)$c['id'] ?>" <?= (string)$class_id===(string)$c['id']?'selected':''; ?>><?= h($c['class_name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="md:col-start-1 col-span-2 md:col-span-4">
+              <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" name="only_has_timetable_class" value="1" <?= $only_has_timetable_class?'checked':''; ?> class="rounded">
+                แสดงเฉพาะห้องที่มีตารางสอน
+              </label>
+            </div>
+
+          <?php elseif($view==='teacher'): ?>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">กลุ่มสาระ</label>
+              <select name="teacher_group" id="f_group" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+                <option value="all" <?= $teacher_group==='all'?'selected':''; ?>>— ทั้งหมด —</option>
+                <?php foreach($groupMap as $gid=>$gn): ?>
+                <option value="<?= $gid ?>" <?= (string)$teacher_group===(string)$gid?'selected':''; ?>><?= h($gn) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">ครู</label>
+              <select name="teacher_id" id="f_teacher" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+                <option value="all" <?= $teacher_id==='all'?'selected':''; ?>>— ทุกคน —</option>
+                <?php foreach($teachers as $t):
+                  if($only_has_timetable && empty($teacherHasTimetable[(int)$t['id']])) continue;
+                  if($teacher_group!=='all' && (string)$t['subject_group']!==(string)$teacher_group) continue; ?>
+                <option value="<?= (int)$t['id'] ?>" <?= (string)$teacher_id===(string)$t['id']?'selected':''; ?>><?= h($t['first_name'].' '.$t['last_name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-span-2 md:col-span-4">
+              <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" name="only_has_timetable" value="1" <?= $only_has_timetable?'checked':''; ?> class="rounded">
+                แสดงเฉพาะครูที่มีตารางสอน
+              </label>
+            </div>
+
+          <?php elseif($view==='room'): ?>
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">ห้องเรียน</label>
+              <select name="room_id" id="f_room" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition">
+                <option value="all" <?= ($_GET['room_id']??'all')==='all'?'selected':''; ?>>— ทุกห้อง —</option>
+                <?php foreach($rooms as $r):
+                  if ($only_has_timetable_room && empty($roomHasTimetable[(int)$r['id']]) && (string)($_GET['room_id']??'all')!==(string)$r['id']) continue; ?>
+                <option value="<?= (int)$r['id'] ?>" <?= (string)($_GET['room_id']??'all')===(string)$r['id']?'selected':''; ?>><?= h($r['room_name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-span-2 md:col-span-4">
+              <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" name="only_has_timetable_room" value="1" <?= $only_has_timetable_room?'checked':''; ?> class="rounded">
+                แสดงเฉพาะห้องที่มีตารางใช้ห้อง
+              </label>
+            </div>
+          <?php endif; ?>
+        </div>
       </div>
 
-      <div class="md:col-span-2">
-        <label class="text-sm text-slate-600">ชื่อผู้อำนวยการ (ช่องอนุมัติ)</label>
-        <input type="text" name="director_name" class="w-full mt-1 rounded-xl border-gray-300 bg-white" placeholder="ชื่อ-สกุล" value="<?= h($director_name) ?>">
-      </div>
+      <hr class="border-slate-100">
+
+      <!-- Section 2: ตั้งค่าหัวกระดาษ -->
       <div>
-        <label class="text-sm text-slate-600">วันที่อนุมัติ</label>
-        <input type="text" name="director_date" class="w-full mt-1 rounded-xl border-gray-300 bg-white" placeholder="....../....../......" value="<?= h($director_date) ?>">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">🏫 ข้อมูลหัวกระดาษ</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อโรงเรียน</label>
+            <input type="text" name="school_name" id="f_school" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($school_name) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">ปีการศึกษา (มุมซ้าย)</label>
+            <input type="text" name="year_text" id="f_year_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ปีการศึกษา 2568" value="<?= h($year_text) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">ภาคเรียน (มุมซ้าย)</label>
+            <input type="text" name="term_text" id="f_term_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ภาคเรียนที่ 1" value="<?= h($term_text) ?>">
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อผู้อำนวยการ (ช่องอนุมัติ)</label>
+            <input type="text" name="director_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ชื่อ-สกุล" value="<?= h($director_name) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">วันที่อนุมัติ</label>
+            <input type="text" name="director_date" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="....../....../......" value="<?= h($director_date) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">พิมพ์ ณ วันที่</label>
+            <input type="date" name="printed_at" id="f_printed" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($printed_at) ?>">
+          </div>
+        </div>
       </div>
 
+      <hr class="border-slate-100">
+
+      <!-- Section 3: แสดงข้อมูล -->
       <div>
-        <label class="text-sm text-slate-600">ปีการศึกษา (มุมซ้าย)</label>
-        <input type="text" name="year_text" id="f_year_text" class="w-full mt-1 rounded-xl border-gray-300 bg-white" placeholder="ปีการศึกษา 2568" value="<?= h($year_text) ?>">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">👁 แสดงข้อมูลในช่อง</p>
+        <div class="flex flex-wrap gap-x-6 gap-y-2">
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_subject" value="1" <?= $show_subject?'checked':''; ?> class="rounded accent-indigo-600"> ชื่อวิชา
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_code" value="1" <?= $show_code?'checked':''; ?> class="rounded accent-indigo-600"> รหัสวิชา
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_room" value="1" <?= $show_room?'checked':''; ?> class="rounded accent-indigo-600"> ห้องเรียน
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_teacher" value="1" <?= $show_teacher?'checked':''; ?> class="rounded accent-indigo-600"> ครูผู้สอน
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_room_code" value="1" <?= $show_room_code?'checked':''; ?> class="rounded accent-indigo-600"> ใช้รหัสห้องแทนชื่อ
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+            <input type="checkbox" name="show_approval" value="1" <?= $show_approval?'checked':''; ?> class="rounded accent-indigo-600"> แสดงช่องอนุมัติ (ผอ.)
+          </label>
+        </div>
       </div>
-      <div>
-        <label class="text-sm text-slate-600">ภาคเรียนที่ (มุมซ้าย)</label>
-        <input type="text" name="term_text" id="f_term_text" class="w-full mt-1 rounded-xl border-gray-300 bg-white" placeholder="ภาคเรียนที่ 1" value="<?= h($term_text) ?>">
-      </div>
 
-      <div class="md:col-span-6 flex flex-wrap items-center gap-4">
-        <?php if($applied): ?>
-          <span class="text-sm text-green-800 bg-green-50 border border-green-200 px-3 py-1 rounded-full">ตั้งค่าแล้ว (แสดงตัวอย่าง)</span>
-        <?php else: ?>
-          <span class="text-sm text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">ยังไม่ได้กดแสดงตัวอย่าง</span>
-        <?php endif; ?>
+      <hr class="border-slate-100">
 
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_subject" id="f_show_subject" value="1" <?= $show_subject?'checked':''; ?>> ชื่อวิชา
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_code" id="f_show_code" value="1" <?= $show_code?'checked':''; ?>> รหัสวิชา
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_room" id="f_show_room" value="1" <?= $show_room?'checked':''; ?>> ห้องเรียน
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_teacher" id="f_show_teacher" value="1" <?= $show_teacher?'checked':''; ?>> ครูผู้สอน
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_room_code" id="f_show_room_code" value="1" <?= $show_room_code?'checked':''; ?>> ใช้รหัสห้องแทนชื่อ
-        </label>
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" name="show_approval" id="f_show_approval" value="1" <?= $show_approval?'checked':''; ?>> แสดงช่องอนุมัติ (ผอ.)
-        </label>
-
-        <a class="rounded-xl bg-white border border-slate-300 text-slate-800 px-4 py-2" href="<?= h($_SERVER['PHP_SELF']) ?>">ล้างค่า</a>
-        <button class="rounded-xl bg-indigo-600 text-white px-4 py-2" type="submit">บันทึก/แสดงตัวอย่าง</button>
-        <button class="rounded-xl bg-slate-900 text-white px-4 py-2" type="submit" name="export" value="print" formtarget="_blank">🖨️ พิมพ์ (แท็บใหม่)</button>
+      <!-- Action buttons -->
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
+          👁 แสดงตัวอย่าง
+        </button>
+        <button type="submit" name="export" value="print" formtarget="_blank"
+          class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
+          🖨️ พิมพ์ (แท็บใหม่)
+        </button>
+        <a href="<?= h($_SERVER['PHP_SELF']) ?>"
+          class="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">
+          ↺ ล้างค่า
+        </a>
       </div>
     </form>
   </div>
@@ -1724,5 +1730,25 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
       form.submit();
     });
   }
+
+  // ✅ Loading overlay
+  const ov = document.getElementById('loadingOverlay');
+  if (form && ov) {
+    form.addEventListener('submit', ()=> ov.classList.remove('hidden'));
+  }
+  // ซ่อน overlay เมื่อกด Back (pageshow จาก bfcache)
+  window.addEventListener('pageshow', (e)=>{
+    if (ov) ov.classList.add('hidden');
+  });
 })();
 </script>
+
+<div id="loadingOverlay" class="hidden fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+  <div class="flex flex-col items-center gap-4">
+    <svg class="animate-spin h-10 w-10 text-indigo-500" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+    </svg>
+    <p class="text-sm font-medium text-slate-600">กำลังสร้างรายงาน...</p>
+  </div>
+</div>

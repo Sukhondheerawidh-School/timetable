@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -108,21 +108,21 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '') === 'copy'){
 
 <div class="max-w-xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">คัดลอกกำลังสอนจากเทอมก่อน</h1>
-  <?php if ($err): ?><div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div><?php endif; ?>
+  <?php if ($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
 
-  <form method="get" id="filterForm" class="bg-white rounded-2xl shadow p-6 space-y-4">
+  <form method="get" id="filterForm" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm mb-1">คัดลอกจากปี</label>
-        <select name="src_year_id" class="w-full border rounded-lg px-3 py-2" onchange="this.form.submit()">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">คัดลอกจากปี</label>
+        <select name="src_year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="this.form.submit()">
           <?php foreach ($years as $y): ?>
             <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id']===$src_year_id?'selected':''; ?>><?= htmlspecialchars($y['year_label']); ?></option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">เทอม</label>
-        <select name="src_term_no" class="w-full border rounded-lg px-3 py-2" onchange="this.form.submit()">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">เทอม</label>
+        <select name="src_term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="this.form.submit()">
           <?php foreach ($srcTermOptions as $t): ?>
             <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$t['term_no'] === (int)$src_term_no) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
           <?php endforeach; ?>
@@ -132,16 +132,16 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '') === 'copy'){
 
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm mb-1">ไปยังปี</label>
-        <select name="target_year_id" class="w-full border rounded-lg px-3 py-2" onchange="this.form.submit()">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ไปยังปี</label>
+        <select name="target_year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="this.form.submit()">
           <?php foreach ($years as $y): ?>
             <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id']===$target_year_id?'selected':''; ?>><?= htmlspecialchars($y['year_label']); ?></option>
           <?php endforeach; ?>
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">เทอม</label>
-        <select name="target_term_no" class="w-full border rounded-lg px-3 py-2" onchange="this.form.submit()">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">เทอม</label>
+        <select name="target_term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="this.form.submit()">
           <?php foreach ($targetTermOptions as $t): ?>
             <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$t['term_no'] === (int)$target_term_no) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
           <?php endforeach; ?>
@@ -164,8 +164,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '') === 'copy'){
     <input type="hidden" name="target_year_id" value="<?= (int)$target_year_id; ?>">
     <input type="hidden" name="target_term_no" value="<?= (int)$target_term_no; ?>">
 
-    <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">คัดลอก</button>
-    <a href="<?= url('loads.php?year_id='.(int)$target_year_id.'&term_no='.(int)$target_term_no); ?>" class="px-4 py-2 rounded-xl border">ยกเลิก</a>
+    <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">คัดลอก</button>
+    <a href="<?= url('loads.php?year_id='.(int)$target_year_id.'&term_no='.(int)$target_term_no); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ยกเลิก</a>
   </form>
 </div>
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -120,7 +120,7 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
   <?php endif; ?>
   <?php if ($err): ?>
-    <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err) ?></div>
+    <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><?= htmlspecialchars($err) ?></div>
   <?php endif; ?>
 
   <div class="bg-white rounded-2xl shadow p-4 mb-4 text-xs text-slate-500">ใช้สำหรับผูก “เวร/จุด” กับอาคาร และกำหนดครูว่าไปประกฎที่อาคารไหน (ได้สูงสุด 2 อาคาร)</div>

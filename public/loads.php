@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -210,7 +210,7 @@ $summary = $stmt2->fetchAll();
     </div>
     <div class="flex gap-2">
       <a href="<?= url('load_copy.php?target_year_id='.(int)$year_id.'&target_term_no='.(int)$term_no); ?>" class="px-3 py-2 rounded-xl border hover:bg-slate-50 text-sm">คัดลอกจากเทอมก่อน</a>
-      <a href="<?= url('load_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">+ สร้างกำลังสอน</a>
+      <a href="<?= url('load_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">+ สร้างกำลังสอน</a>
       <?php if ($isAdmin): ?>
         <button type="button" id="btnDeleteAll" class="px-3 py-2 rounded-xl border border-rose-600 text-rose-600 hover:bg-rose-50 text-sm">
           🗑️ ลบกำลังสอนทั้งหมด
@@ -230,7 +230,7 @@ $summary = $stmt2->fetchAll();
     <input type="hidden" name="page" value="1">
     <div>
       <label class="block text-xs mb-1">ปีการศึกษา</label>
-      <select name="year_id" class="w-full border rounded-lg px-3 py-2">
+      <select name="year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
         <?php foreach ($years as $y): ?>
           <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id']===$year_id?'selected':''; ?>>
             <?= htmlspecialchars($y['year_label']).($y['is_active']?' 🟢':''); ?>
@@ -240,7 +240,7 @@ $summary = $stmt2->fetchAll();
     </div>
     <div>
       <label class="block text-xs mb-1">เทอม</label>
-      <select name="term_no" class="w-full border rounded-lg px-3 py-2">
+      <select name="term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
         <?php foreach ($termOptions as $t): ?>
           <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$term_no === (int)$t['term_no']) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
         <?php endforeach; ?>
@@ -248,7 +248,7 @@ $summary = $stmt2->fetchAll();
     </div>
     <div>
       <label class="block text-xs mb-1">กลุ่มสาระ</label>
-      <select name="group" class="w-full border rounded-lg px-3 py-2" id="groupSelect">
+      <select name="group" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" id="groupSelect">
         <option value="">ทั้งหมด</option>
         <?php foreach (teacher_group_options() as $k=>$v): ?>
           <option value="<?= (int)$k; ?>" <?= ($group!==null && (int)$group===$k)?'selected':''; ?>><?= htmlspecialchars($v); ?></option>
@@ -257,7 +257,7 @@ $summary = $stmt2->fetchAll();
     </div>
     <div>
       <label class="block text-xs mb-1">ครู</label>
-      <select name="teacher_id" class="w-full border rounded-lg px-3 py-2" id="teacherSelect">
+      <select name="teacher_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" id="teacherSelect">
         <option value="">ทั้งหมด</option>
         <?php foreach ($teachers as $t): ?>
           <option value="<?= (int)$t['id']; ?>" <?= ($teacher_id && (int)$teacher_id===(int)$t['id'])?'selected':''; ?>>
@@ -289,7 +289,7 @@ $summary = $stmt2->fetchAll();
     <div class="p-4 border-b flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
       <div class="flex-1">
         <label for="tt-load-search" class="block text-xs mb-1 text-slate-600">ค้นหาในตาราง</label>
-        <input id="tt-load-search" type="text" class="w-full border rounded-lg px-3 py-2" placeholder="พิมพ์เพื่อกรอง เช่น ชื่อครู / วิชา / ห้อง / ชั้น">
+        <input id="tt-load-search" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="พิมพ์เพื่อกรอง เช่น ชื่อครู / วิชา / ห้อง / ชั้น">
       </div>
       <div class="flex items-center gap-2">
         <button type="button" id="tt-load-search-clear" class="px-3 py-2 rounded-lg border hover:bg-slate-50 text-sm">ล้าง</button>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -93,30 +93,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="max-w-3xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">แก้ไขชั้นเรียน</h1>
 
-  <?php if ($err): ?><div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div><?php endif; ?>
+  <?php if ($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
 
-  <form method="post" class="bg-white rounded-2xl shadow p-6 space-y-4">
+  <form method="post" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
     <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div>
-        <label class="block text-sm mb-1">ชื่อชั้น</label>
-        <input name="grade_label" class="w-full border rounded-lg px-3 py-2" required value="<?= htmlspecialchars($_POST['grade_label'] ?? $class['grade_label']); ?>">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อชั้น</label>
+        <input name="grade_label" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['grade_label'] ?? $class['grade_label']); ?>">
       </div>
       <div>
-        <label class="block text-sm mb-1">เลขห้องย่อย</label>
-        <input type="number" name="section_no" class="w-full border rounded-lg px-3 py-2" min="1" required value="<?= htmlspecialchars($_POST['section_no'] ?? $class['section_no']); ?>">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">เลขห้องย่อย</label>
+        <input type="number" name="section_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" min="1" required value="<?= htmlspecialchars($_POST['section_no'] ?? $class['section_no']); ?>">
       </div>
       <div>
-        <label class="block text-sm mb-1">ชั้น/ห้อง</label>
-        <input class="w-full border rounded-lg px-3 py-2 bg-slate-50" disabled value="<?=
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชั้น/ห้อง</label>
+        <input class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 text-slate-500 outline-none text-sm" disabled value="<?=
           htmlspecialchars( (($_POST['grade_label'] ?? $class['grade_label']).'/'.($_POST['section_no'] ?? $class['section_no'])) ); ?>">
       </div>
     </div>
 
     <div>
-      <label class="block text-sm mb-1">ห้องเรียนประจำ</label>
-      <select name="homeroom_room_id" class="w-full border rounded-lg px-3 py-2">
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ห้องเรียนประจำ</label>
+      <select name="homeroom_room_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
         <option value="">— ยังไม่กำหนด —</option>
         <?php
           $selRoom = $_POST['homeroom_room_id'] ?? $class['homeroom_room_id'];
@@ -172,8 +172,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <div class="flex items-center gap-2">
-      <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-      <a href="<?= url('classes.php'); ?>" class="px-4 py-2 rounded-xl border">ยกเลิก</a>
+      <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+      <a href="<?= url('classes.php'); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ยกเลิก</a>
     </div>
   </form>
 </div>

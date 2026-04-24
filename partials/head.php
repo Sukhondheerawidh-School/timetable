@@ -4,12 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= $pageTitle ?? 'ระบบจัดตารางสอน'; ?></title>
-  <link rel="icon" type="image/png" href="<?= url('assets/logo-web.png?v=' . time()); ?>">
-  <link rel="shortcut icon" type="image/png" href="<?= url('assets/logo-web.png?v=' . time()); ?>">
+  <link rel="icon" type="image/png" href="<?= url('assets/logo-web.png?v=20260219'); ?>">
+  <link rel="shortcut icon" type="image/png" href="<?= url('assets/logo-web.png?v=20260219'); ?>">
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SweetAlert2: โหลด local ก่อน ถ้าไม่มีค่อย fallback CDN (ป้องกัน CSS โหลดซ้ำ) -->
   <link rel="stylesheet" href="<?= url('assets/vendor/sweetalert2/sweetalert2.min.css?v=20260219'); ?>">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
-  <link rel="stylesheet" href="https://unpkg.com/sweetalert2@11/dist/sweetalert2.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -38,13 +37,18 @@
     }
   </script>
   <script src="<?= url('assets/vendor/sweetalert2/sweetalert2.all.min.js?v=20260219'); ?>"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script>
-    // Fallback CDN (บางเครือข่าย block jsdelivr/ไม่มีอินเทอร์เน็ต)
+    // Fallback CDN เมื่อ local ไม่มี (เช่น dev machine ไม่ได้ copy vendor)
     if (!window.Swal) {
+      document.head.insertAdjacentHTML('beforeend',
+        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">');
       var s = document.createElement('script');
-      s.src = 'https://unpkg.com/sweetalert2@11/dist/sweetalert2.all.min.js';
-      s.referrerPolicy = 'no-referrer';
+      s.src = 'https://cdn.jsdelivr.net/npm/sweetalert2@11';
+      s.onerror = function() {
+        var s2 = document.createElement('script');
+        s2.src = 'https://unpkg.com/sweetalert2@11/dist/sweetalert2.all.min.js';
+        document.head.appendChild(s2);
+      };
       document.head.appendChild(s);
     }
   </script>

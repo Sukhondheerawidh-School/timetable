@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -41,7 +41,7 @@ $subjects = $stmt->fetchAll();
     <div class="flex gap-2">
       <a href="<?= url('subject_template.php'); ?>" class="px-3 py-2 rounded-xl border hover:bg-slate-50 text-sm">ดาวน์โหลดเทมเพลต CSV</a>
       <a href="<?= url('subject_import.php'); ?>" class="px-3 py-2 rounded-xl border hover:bg-slate-50 text-sm">นำเข้าจาก CSV</a>
-      <a href="<?= url('subject_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">+ เพิ่มวิชา</a>
+      <a href="<?= url('subject_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">+ เพิ่มวิชา</a>
       <button type="button" id="btnDeleteAll" class="px-3 py-2 rounded-xl border border-rose-600 text-rose-600 hover:bg-rose-50 text-sm">
         🗑️ ลบวิชาทั้งหมด
       </button>

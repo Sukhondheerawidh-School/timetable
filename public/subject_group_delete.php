@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="max-w-xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">ลบกลุ่มสาระการเรียนรู้</h1>
 
-  <div class="bg-white rounded-2xl shadow p-6">
+  <div class="bg-white rounded-2xl shadow border border-slate-200 p-6">
     <div class="mb-6">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -79,7 +79,7 @@ $flash = flash_get();
   <div class="max-w-6xl mx-auto px-4">
     <div class="flex items-center justify-between mt-8 mb-4">
       <h1 class="text-xl font-semibold">ปีการศึกษา & เทอม</h1>
-      <a href="<?= url('year_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">+ เพิ่มปีการศึกษา</a>
+      <a href="<?= url('year_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">+ เพิ่มปีการศึกษา</a>
     </div>
 
     <?php if ($flash): ?>
@@ -89,7 +89,7 @@ $flash = flash_get();
     <?php endif; ?>
 
     <?php if ($err): ?>
-      <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div>
+      <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div>
     <?php endif; ?>
 
     <div class="bg-white rounded-2xl shadow p-6 mb-4">
@@ -136,7 +136,7 @@ $flash = flash_get();
         </div>
 
         <div class="md:col-span-2">
-          <button class="w-full px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
+          <button class="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
         </div>
       </form>
     </div>
@@ -159,7 +159,7 @@ $flash = flash_get();
             $terms = $stmt->fetchAll();
           }
         ?>
-        <div class="bg-white rounded-2xl shadow p-6">
+        <div class="bg-white rounded-2xl shadow border border-slate-200 p-6">
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-3">
               <h2 class="text-lg font-semibold">ปีการศึกษา <?= htmlspecialchars($y['year_label']); ?></h2>

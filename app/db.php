@@ -31,5 +31,11 @@ function tt_db_reconnect(): bool {
 try {
   $pdo = tt_db_create_pdo();
 } catch (PDOException $e) {
-  die('DB Connection failed: ' . $e->getMessage());
+  // อย่า expose รายละเอียด DB ให้ผู้ใช้ทั่วไปเห็น
+  $isDev = strtolower((string)(getenv('APP_ENV') ?: 'production')) === 'development';
+  if ($isDev) {
+    die('DB Connection failed: ' . htmlspecialchars($e->getMessage()));
+  }
+  http_response_code(503);
+  die('ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาติดต่อผู้ดูแลระบบ');
 }

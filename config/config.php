@@ -22,20 +22,43 @@ $__ttBaseUrl = rtrim($__ttBaseUrl, '/');
 define('BASE_URL', $__ttBaseUrl);
 
 // DB
-define('DB_DRIVER', 'mysql');
-define('DB_HOST', '127.0.0.1');
-define('DB_NAME', 'timetable_app');
-define('DB_USER', 'root');
-define('DB_PASS', ''); // XAMPP ปกติว่าง
+// แนะนำ: ตั้งค่าเป็น Environment Variables แทนการเขียน user/pass ลงไฟล์
+// - TT_DB_HOST, TT_DB_NAME, TT_DB_USER, TT_DB_PASS
+// (ใน XAMPP/Apache สามารถตั้งผ่าน httpd.conf / vhost ด้วย SetEnv)
+$__ttDbDriver = (string)(getenv('TT_DB_DRIVER') ?: 'mysql');
+$__ttDbHost = (string)(getenv('TT_DB_HOST') ?: '127.0.0.1');
+$__ttDbName = (string)(getenv('TT_DB_NAME') ?: 'timetable_app');
+$__ttDbUser = (string)(getenv('TT_DB_USER') ?: 'root');
+$__ttDbPass = (string)(getenv('TT_DB_PASS') ?: ''); // XAMPP ปกติว่าง
+
+define('DB_DRIVER', $__ttDbDriver);
+define('DB_HOST', $__ttDbHost);
+define('DB_NAME', $__ttDbName);
+define('DB_USER', $__ttDbUser);
+define('DB_PASS', $__ttDbPass);
 
 // ตั้งค่า session
 ini_set('session.cookie_httponly', 1);
+// เปิด secure cookie เฉพาะเมื่อเชื่อมต่อผ่าน HTTPS
+if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+  ini_set('session.cookie_secure', 1);
+}
 session_name('tt_sess');
 session_start();
 
 // timezone
 date_default_timezone_set('Asia/Bangkok');
 
-// error (ช่วง dev)
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Security headers (ส่งก่อน output ใด ๆ)
+if (!headers_sent()) {
+  header('X-Frame-Options: SAMEORIGIN');
+  header('X-Content-Type-Options: nosniff');
+  header('X-XSS-Protection: 1; mode=block');
+  header('Referrer-Policy: strict-origin-when-cross-origin');
+}
+
+// error: ซ่อนใน production, แสดงใน development
+$_isDev = (strtolower((string)(getenv('APP_ENV') ?: 'production')) === 'development');
+error_reporting($_isDev ? E_ALL : 0);
+ini_set('display_errors', $_isDev ? '1' : '0');
+unset($_isDev);

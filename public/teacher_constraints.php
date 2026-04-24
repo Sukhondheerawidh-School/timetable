@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // public/teacher_constraints.php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
@@ -171,14 +171,14 @@ $flash = flash_get();
     </div>
   <?php endif; ?>
   <?php if ($err): ?>
-    <div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div>
+    <div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div>
   <?php endif; ?>
 
   <!-- ตัวเลือกชุด ปี/เทอม/ครู -->
   <form method="get" id="filterForm" class="bg-white rounded-2xl shadow p-4 mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
     <div>
       <label class="block text-xs mb-1">ปีการศึกษา</label>
-      <select name="year_id" class="w-full border rounded-lg px-3 py-2" onchange="document.getElementById('filterForm').submit()">
+      <select name="year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="document.getElementById('filterForm').submit()">
         <?php foreach ($years as $y): ?>
           <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id']===$year_id?'selected':''; ?>>
             <?= htmlspecialchars($y['year_label']).($y['is_active']?' 🟢':''); ?>
@@ -188,7 +188,7 @@ $flash = flash_get();
     </div>
     <div>
       <label class="block text-xs mb-1">เทอม</label>
-      <select name="term_no" class="w-full border rounded-lg px-3 py-2" onchange="document.getElementById('filterForm').submit()">
+      <select name="term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="document.getElementById('filterForm').submit()">
         <?php foreach ($termOptions as $t): ?>
           <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$t['term_no'] === (int)$term_no) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
         <?php endforeach; ?>
@@ -196,7 +196,7 @@ $flash = flash_get();
     </div>
     <div class="md:col-span-2">
       <label class="block text-xs mb-1">ครู (จัดกลุ่มตามกลุ่มสาระ)</label>
-      <select name="teacher_id" class="w-full border rounded-lg px-3 py-2" onchange="document.getElementById('filterForm').submit()">
+      <select name="teacher_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" onchange="document.getElementById('filterForm').submit()">
         <?php 
         $currentSubject = '';
         foreach ($teachers as $t): 
@@ -261,9 +261,9 @@ $flash = flash_get();
     </table>
 
     <div class="flex items-center gap-2 mt-4">
-      <button name="action" value="save" class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-      <button type="button" id="btnClearSingle" class="px-4 py-2 rounded-xl border">ล้างทั้งหมด</button>
-      <a href="<?= url('loads.php?year_id='.(int)$year_id.'&term_no='.(int)$term_no); ?>" class="px-4 py-2 rounded-xl border">กลับไปกำลังสอน</a>
+      <button name="action" value="save" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+      <button type="button" id="btnClearSingle" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ล้างทั้งหมด</button>
+      <a href="<?= url('loads.php?year_id='.(int)$year_id.'&term_no='.(int)$term_no); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">กลับไปกำลังสอน</a>
     </div>
 
     <p class="text-xs text-slate-500 mt-3">

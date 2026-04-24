@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
@@ -222,15 +222,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
 
 <div class="max-w-3xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">สร้างกำลังสอน</h1>
-  <?php if ($err): ?><div class="mb-4 p-3 rounded bg-rose-50 text-rose-700 text-sm"><?= htmlspecialchars($err); ?></div><?php endif; ?>
+  <?php if ($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
 
-  <form method="post" class="bg-white rounded-2xl shadow p-6 space-y-4">
+  <form method="post" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
     <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
 
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm mb-1">ปีการศึกษา</label>
-        <select name="academic_year_id" class="w-full border rounded-lg px-3 py-2" required>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ปีการศึกษา</label>
+        <select name="academic_year_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
           <?php foreach ($years as $y): ?>
             <option value="<?= (int)$y['id']; ?>" <?= (int)$y['id'] === (int)$selectedYearId ? 'selected' : ''; ?>>
               <?= htmlspecialchars($y['year_label']).($y['is_active'] ? ' 🟢' : ''); ?>
@@ -239,8 +239,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">เทอม</label>
-        <select name="term_no" class="w-full border rounded-lg px-3 py-2" required>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">เทอม</label>
+        <select name="term_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
           <?php foreach ($termOptions as $t): ?>
             <option value="<?= (int)$t['term_no']; ?>" <?= ((int)$t['term_no'] === (int)$selectedTermNo) ? 'selected' : ''; ?>><?= htmlspecialchars($t['term_name']); ?></option>
           <?php endforeach; ?>
@@ -250,8 +250,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
 
     <div class="grid md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm mb-1">ครู (จัดกลุ่มตามกลุ่มสาระ)</label>
-        <select name="teacher_id" class="w-full border rounded-lg px-3 py-2" required>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ครู (จัดกลุ่มตามกลุ่มสาระ)</label>
+        <select name="teacher_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
           <?php 
           $currentSubject = '';
           foreach ($teachers as $t): 
@@ -270,8 +270,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">วิชา</label>
-        <select name="subject_id" class="w-full border rounded-lg px-3 py-2" required>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">วิชา</label>
+        <select name="subject_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
           <?php foreach ($subjects as $s): ?>
             <option value="<?= (int)$s['id']; ?>"><?= htmlspecialchars($s['subject_code'].' - '.$s['subject_name']); ?></option>
           <?php endforeach; ?>
@@ -280,11 +280,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <div>
-      <label class="block text-sm mb-1">ชั้น/ห้อง (เลือกหลายห้องได้)</label>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชั้น/ห้อง (เลือกหลายห้องได้)</label>
 
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
         <div class="flex-1">
-          <input id="tt-class-search" type="text" class="w-full border rounded-lg px-3 py-2" placeholder="ค้นหาชั้น/ห้อง เช่น ม.1/1">
+          <input id="tt-class-search" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="ค้นหาชั้น/ห้อง เช่น ม.1/1">
         </div>
         <div class="flex items-center gap-3 text-sm">
           <span class="text-slate-500">รูปแบบ:</span>
@@ -320,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
       </div>
 
       <div id="tt-class-mode-select" class="hidden">
-        <select id="tt-class-select" name="class_ids[]" class="w-full border rounded-lg px-3 py-2" multiple size="10">
+        <select id="tt-class-select" name="class_ids[]" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" multiple size="10">
           <?php foreach ($classes as $c):
             $cid = (int)$c['id'];
             $cname = (string)$c['class_name'];
@@ -341,8 +341,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
 
     <div class="grid md:grid-cols-3 gap-4">
       <div>
-        <label class="block text-sm mb-1">ห้องเรียน (ถ้ามี)</label>
-        <select name="room_id" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ห้องเรียน (ถ้ามี)</label>
+        <select name="room_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="">— ใช้ค่าห้องประจำ/ไม่กำหนด —</option>
           <?php foreach ($rooms as $r): ?>
             <option value="<?= (int)$r['id']; ?>"><?= htmlspecialchars($r['room_code'].' - '.$r['room_name']); ?></option>
@@ -350,13 +350,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
         </select>
       </div>
       <div>
-        <label class="block text-sm mb-1">คาบ/สัปดาห์ <span class="text-rose-600">*</span></label>
-        <input type="number" name="periods_per_week" min="1" class="w-full border rounded-lg px-3 py-2" value="0" required>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบ/สัปดาห์ <span class="text-rose-600">*</span></label>
+        <input type="number" name="periods_per_week" min="1" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" value="0" required>
         <p class="text-xs text-rose-600 mt-1">กรุณาระบุจำนวนคาบ (ต้องมากกว่า 0)</p>
       </div>
       <div>
-        <label class="block text-sm mb-1">คาบติดกัน</label>
-        <select name="consecutive_slots" class="w-full border rounded-lg px-3 py-2">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบติดกัน</label>
+        <select name="consecutive_slots" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="1">ไม่ติดกัน</option>
           <option value="2">2 คาบติด</option>
         </select>
@@ -364,8 +364,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <div class="flex items-center gap-2">
-      <button class="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90">บันทึก</button>
-      <a href="<?= url('loads.php'); ?>" class="px-4 py-2 rounded-xl border">ยกเลิก</a>
+      <button class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">บันทึก</button>
+      <a href="<?= url('loads.php'); ?>" class="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">ยกเลิก</a>
     </div>
   </form>
 </div>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // public/users.php  (หรือ user.php ถ้าคุณใช้ชื่อเดิม)
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
@@ -20,7 +20,7 @@ $flash = flash_get();
   <div class="max-w-6xl mx-auto px-4">
     <div class="flex items-center justify-between mt-8 mb-4">
       <h1 class="text-xl font-semibold">ผู้ใช้</h1>
-      <a href="<?= url('user_create.php'); ?>" class="px-3 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 text-sm">+ เพิ่มผู้ใช้</a>
+      <a href="<?= url('user_create.php'); ?>" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition">+ เพิ่มผู้ใช้</a>
     </div>
 
     <?php if ($flash): ?>

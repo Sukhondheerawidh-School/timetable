@@ -1,4 +1,10 @@
 <?php
+// ป้องกันการเรียกจาก Web – ไฟล์นี้ใช้ได้เฉพาะ CLI เท่านั้น
+if (PHP_SAPI !== 'cli') {
+  http_response_code(403);
+  die('403 Forbidden — ไฟล์นี้รันได้เฉพาะทาง CLI เท่านั้น กรุณาใช้คำสั่ง: php public/seed_admin.php');
+}
+
 require_once __DIR__ . '/../app/db.php';
 
 $name = 'Administrator';
