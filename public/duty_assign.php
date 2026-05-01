@@ -1267,9 +1267,9 @@ include __DIR__ . '/../partials/navbar.php';
       var days = [1,2,3,4,5];
       var html = '<table style="width:100%;border-collapse:separate;border-spacing:8px;">';
       html += '<thead><tr>';
-      html += '<th style="background:#1e293b;color:#64748b;font-size:0.85rem;padding:10px 14px;border-radius:10px;text-align:left;white-space:nowrap;">ช่วงเวลา</th>';
+      html += '<th style="position:sticky;top:0;z-index:10;background:#1e293b;color:#64748b;font-size:0.85rem;padding:10px 14px;border-radius:10px;text-align:left;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.5);">ช่วงเวลา</th>';
       days.forEach(function(d) {
-        html += '<th style="background:#1e293b;color:#f1f5f9;font-size:1.15rem;font-weight:800;padding:12px;border-radius:10px;text-align:center;min-width:190px;">'+DOW[d]+'</th>';
+        html += '<th style="position:sticky;top:0;z-index:10;background:#1e293b;color:#f1f5f9;font-size:1.15rem;font-weight:800;padding:12px;border-radius:10px;text-align:center;min-width:190px;box-shadow:0 2px 6px rgba(0,0,0,0.5);">'+DOW[d]+'</th>';
       });
       html += '</tr></thead><tbody>';
 
@@ -1369,7 +1369,7 @@ include __DIR__ . '/../partials/navbar.php';
         sh.assignees.forEach(function(a) {
           html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#0f172a;border:1px solid #22c55e;border-radius:14px;padding:14px 18px;">';
           html += '<span style="font-size:1.15rem;font-weight:700;color:#f8fafc;">'+esc(a.name)+'</span>';
-          html += '<form method="post" onsubmit="sessionStorage.setItem(\'tt_presenter_active\',\'1\');" style="margin:0;">';
+          html += '<form method="post" onsubmit="ttPresenter.saveState('+currentShiftId+');" style="margin:0;">';
           html += hiddenFields(sh.id) + '<input type="hidden" name="action" value="unassign"><input type="hidden" name="id" value="'+a.id+'">';
           html += '<button type="submit" style="padding:10px 20px;background:#7f1d1d;color:#fca5a5;border:1px solid #dc2626;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">🗑️ ยกเลิก</button>';
           html += '</form></div>';
@@ -1383,7 +1383,8 @@ include __DIR__ . '/../partials/navbar.php';
         if (!sh.teachers.length) {
           html += '<div style="color:#64748b;text-align:center;padding:40px;font-size:1.05rem;">— ไม่มีครูที่ว่างในช่วงเวลานี้ —</div>';
         } else {
-          html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">';
+          html += '<input type="text" id="ppTeacherSearch" placeholder="🔍 พิมพ์ชื่อครู..." autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 16px;background:#0f172a;border:1px solid #334155;border-radius:12px;color:#f1f5f9;font-size:1rem;margin-bottom:12px;outline:none;" oninput="ttPresenter.filterTeachers(this.value)">';
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;" id="ppTeacherGrid">';
           sh.teachers.forEach(function(t) {
             var bg, border, badge = '', cntColor;
             if (t.best) {
@@ -1396,7 +1397,9 @@ include __DIR__ . '/../partials/navbar.php';
               bg = '#0f172a'; border = '#334155'; cntColor = '#64748b';
             }
             var adjTxt = (t.adjNotes && t.adjNotes.length) ? '<div style="font-size:0.75rem;color:#94a3b8;margin-top:3px;">'+esc(t.adjNotes.join(' · '))+'</div>' : '';
-            html += '<form method="post" onsubmit="sessionStorage.setItem(\'tt_presenter_active\',\'1\');" style="margin:0;">';
+            var tname = esc(t.name.replace(/\[.*?\]\s*/g,''));
+            html += '<div class="pp-ti" data-name="'+tname.toLowerCase()+'">';
+            html += '<form method="post" onsubmit="ttPresenter.saveState('+currentShiftId+');" style="margin:0;">';
             html += hiddenFields(sh.id) + '<input type="hidden" name="action" value="assign"><input type="hidden" name="teacher_id" value="'+t.id+'">';
             html += '<button type="submit" style="width:100%;text-align:left;background:'+bg+';border:2px solid '+border
               +';border-radius:14px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;"'
@@ -1407,7 +1410,7 @@ include __DIR__ . '/../partials/navbar.php';
             html += '<div style="font-size:1.05rem;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name)+'</div>';
             html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+badge
               +'<span style="font-size:0.78rem;color:#64748b;">รับแล้ว '+t.cnt+' เวร</span></div>';
-            html += adjTxt + '</div></button></form>';
+            html += adjTxt + '</div></button></form></div>';
           });
           html += '</div>';
         }
@@ -1418,6 +1421,8 @@ include __DIR__ . '/../partials/navbar.php';
 
       html += '</div>'; // end body
       document.getElementById('pPresenterModalBox').innerHTML = html;
+      var si = document.getElementById('ppTeacherSearch');
+      if (si) { si.focus(); }
     }
 
     function hiddenFields(shiftId) {
@@ -1430,15 +1435,38 @@ include __DIR__ . '/../partials/navbar.php';
         +'<input type="hidden" name="return_view" value="week">';
     }
 
+    function saveState(shiftId) {
+      sessionStorage.setItem('tt_presenter_active', '1');
+      sessionStorage.setItem('tt_presenter_shift', shiftId);
+      var grid = document.getElementById('pPresenterGrid');
+      if (grid) sessionStorage.setItem('tt_presenter_scroll', grid.scrollTop);
+    }
+
     // Auto-restore after page reload (post-assign/unassign)
     document.addEventListener('DOMContentLoaded', function() {
       if (sessionStorage.getItem('tt_presenter_active') === '1') {
         sessionStorage.removeItem('tt_presenter_active');
-        setTimeout(enter, 80);
+        var savedScroll = parseInt(sessionStorage.getItem('tt_presenter_scroll') || '0');
+        var savedShift  = parseInt(sessionStorage.getItem('tt_presenter_shift')  || '0');
+        sessionStorage.removeItem('tt_presenter_scroll');
+        sessionStorage.removeItem('tt_presenter_shift');
+        setTimeout(function() {
+          enter();
+          var grid = document.getElementById('pPresenterGrid');
+          if (grid && savedScroll) grid.scrollTop = savedScroll;
+          if (savedShift) openModal(savedShift);
+        }, 80);
       }
     });
 
-    return { enter: enter, exit: exit, openModal: openModal, closeModal: closeModal };
+    function filterTeachers(val) {
+      var v = val.toLowerCase();
+      document.querySelectorAll('#pPresenterModalBox .pp-ti').forEach(function(el) {
+        el.style.display = (el.dataset.name || '').includes(v) ? '' : 'none';
+      });
+    }
+
+    return { enter: enter, exit: exit, openModal: openModal, closeModal: closeModal, saveState: saveState, filterTeachers: filterTeachers };
   })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1004,27 +1004,27 @@ details[open] > form.add-form {
   transition: all 0.2s;
 }
 
-/* ✅ Summary */
-details summary {
+/* ✅ Summary - scoped to timetable cells only (ไม่กระทบ sidebar .tt-nav) */
+details:not(.tt-nav) > summary {
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 0.5rem;
   border: 2px dashed #cbd5e1;
   text-align: center;
-  font-size: 0.813rem; /* ✅ เพิ่มจาก 0.75rem */
-  font-weight: 600; /* ✅ เพิ่มจาก 500 */
+  font-size: 0.813rem;
+  font-weight: 600;
   color: #64748b;
   transition: all 0.2s;
   user-select: none;
 }
 
-details summary:hover {
+details:not(.tt-nav) > summary:hover {
   background: #f1f5f9;
   border-color: #94a3b8;
   color: #475569;
 }
 
-details[open] summary {
+details:not(.tt-nav)[open] > summary {
   border-style: solid;
   background: #f1f5f9;
   margin-bottom: 0.5rem;
