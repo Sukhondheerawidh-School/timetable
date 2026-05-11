@@ -450,16 +450,44 @@ function gridByClass(PDO $pdo,$year_id,$term_no,$class_id){
     $g[(int)$r['day_of_week']][(int)$r['period_no']] = $r;
   }
   
-  // ดึงวิชากิจกรรม
+  // ดึงวิชากิจกรรมปกติ (ไม่ใช่ทั้งวัน)
   $sqlAct = "SELECT ag.day_of_week, ag.period_no, ag.activity_name,
                     ag.room_id,
                     'activity' AS slot_type
              FROM activity_groups ag
              JOIN activity_classes ac ON ac.activity_id = ag.id
-             WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.day_of_week BETWEEN 1 AND ?";
+             WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.day_of_week BETWEEN 1 AND ? AND ag.is_all_day=0";
   $stAct = $pdo->prepare($sqlAct);
   $stAct->execute([$year_id, $term_no, $class_id, $max_day]);
   while($r = $stAct->fetch(PDO::FETCH_ASSOC)){
+    $day = (int)$r['day_of_week'];
+    $pno = (int)$r['period_no'];
+    if (!isset($g[$day][$pno])) {
+      $g[$day][$pno] = [
+        'id' => null,
+        'day_of_week' => $day,
+        'period_no' => $pno,
+        'subject_name' => $r['activity_name'],
+        'room_id' => $r['room_id'] ?? null,
+        'display_room' => null,
+        'teachers' => null,
+        'slot_type' => 'activity'
+      ];
+    }
+  }
+  
+  // ดึงวิชากิจกรรมทั้งวัน - กระจายข้ามหลายคาบ
+    $sqlActAllDay = "SELECT ag.day_of_week, ag.activity_name, ag.room_id, ps.period_no,
+                          'activity' AS slot_type
+                   FROM activity_groups ag
+                   JOIN activity_classes ac ON ac.activity_id = ag.id
+         JOIN period_slots ps
+                   WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? 
+                         AND ag.day_of_week BETWEEN 1 AND ? AND ag.is_all_day=1
+                   ORDER BY ag.day_of_week, ps.period_no";
+  $stActAllDay = $pdo->prepare($sqlActAllDay);
+    $stActAllDay->execute([$year_id, $term_no, $class_id, $max_day]);
+  while($r = $stActAllDay->fetch(PDO::FETCH_ASSOC)){
     $day = (int)$r['day_of_week'];
     $pno = (int)$r['period_no'];
     if (!isset($g[$day][$pno])) {
@@ -503,16 +531,44 @@ function gridByTeacher(PDO $pdo,$year_id,$term_no,$teacher_id){
     $g[(int)$r['day_of_week']][(int)$r['period_no']] = $r;
   }
   
-  // ดึงวิชากิจกรรม
+  // ดึงวิชากิจกรรมปกติ (ไม่ใช่ทั้งวัน)
   $sqlAct = "SELECT ag.day_of_week, ag.period_no, ag.activity_name,
                     ag.room_id,
                     'activity' AS slot_type
              FROM activity_groups ag
              JOIN activity_teachers at ON at.activity_id = ag.id
-             WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.day_of_week BETWEEN 1 AND ?";
+             WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.day_of_week BETWEEN 1 AND ? AND ag.is_all_day=0";
   $stAct = $pdo->prepare($sqlAct);
   $stAct->execute([$year_id, $term_no, $teacher_id, $max_day]);
   while($r = $stAct->fetch(PDO::FETCH_ASSOC)){
+    $day = (int)$r['day_of_week'];
+    $pno = (int)$r['period_no'];
+    if (!isset($g[$day][$pno])) {
+      $g[$day][$pno] = [
+        'id' => null,
+        'day_of_week' => $day,
+        'period_no' => $pno,
+        'subject_name' => $r['activity_name'],
+        'class_name' => null,
+        'room_id' => $r['room_id'] ?? null,
+        'display_room' => null,
+        'slot_type' => 'activity'
+      ];
+    }
+  }
+  
+  // ดึงวิชากิจกรรมทั้งวัน - กระจายข้ามหลายคาบ
+    $sqlActAllDay = "SELECT ag.day_of_week, ag.activity_name, ag.room_id, ps.period_no,
+                          'activity' AS slot_type
+                   FROM activity_groups ag
+                   JOIN activity_teachers at ON at.activity_id = ag.id
+         JOIN period_slots ps
+                   WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=?
+                         AND ag.day_of_week BETWEEN 1 AND ? AND ag.is_all_day=1
+                   ORDER BY ag.day_of_week, ps.period_no";
+  $stActAllDay = $pdo->prepare($sqlActAllDay);
+    $stActAllDay->execute([$year_id, $term_no, $teacher_id, $max_day]);
+  while($r = $stActAllDay->fetch(PDO::FETCH_ASSOC)){
     $day = (int)$r['day_of_week'];
     $pno = (int)$r['period_no'];
     if (!isset($g[$day][$pno])) {
@@ -555,15 +611,43 @@ function gridByRoom(PDO $pdo,$year_id,$term_no,$room_id){
     $g[(int)$r['day_of_week']][(int)$r['period_no']] = $r;
   }
   
-  // ดึงวิชากิจกรรม
+  // ดึงวิชากิจกรรมปกติ (ไม่ใช่ทั้งวัน)
   $sqlAct = "SELECT ag.day_of_week, ag.period_no, ag.activity_name,
                     ag.room_id,
                     'activity' AS slot_type
              FROM activity_groups ag
-             WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.room_id=? AND ag.day_of_week BETWEEN 1 AND 5";
+             WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.room_id=? AND ag.day_of_week BETWEEN 1 AND 5 AND ag.is_all_day=0";
   $stAct = $pdo->prepare($sqlAct);
   $stAct->execute([$year_id, $term_no, $room_id]);
   while($r = $stAct->fetch(PDO::FETCH_ASSOC)){
+    $day = (int)$r['day_of_week'];
+    $pno = (int)$r['period_no'];
+    if (!isset($g[$day][$pno])) {
+      $g[$day][$pno] = [
+        'id' => null,
+        'day_of_week' => $day,
+        'period_no' => $pno,
+        'subject_name' => $r['activity_name'],
+        'class_name' => null,
+        'room_id' => $r['room_id'] ?? null,
+        'display_room' => null,
+        'teachers' => null,
+        'slot_type' => 'activity'
+      ];
+    }
+  }
+
+  // ดึงวิชากิจกรรมทั้งวัน - กระจายข้ามหลายคาบ
+  $sqlActAllDay = "SELECT ag.day_of_week, ag.activity_name, ag.room_id, ps.period_no,
+                          'activity' AS slot_type
+                   FROM activity_groups ag
+                   JOIN period_slots ps
+                   WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.room_id=? 
+                         AND ag.day_of_week BETWEEN 1 AND 5 AND ag.is_all_day=1
+                   ORDER BY ag.day_of_week, ps.period_no";
+  $stActAllDay = $pdo->prepare($sqlActAllDay);
+  $stActAllDay->execute([$year_id, $term_no, $room_id]);
+  while($r = $stActAllDay->fetch(PDO::FETCH_ASSOC)){
     $day = (int)$r['day_of_week'];
     $pno = (int)$r['period_no'];
     if (!isset($g[$day][$pno])) {

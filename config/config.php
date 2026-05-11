@@ -29,7 +29,7 @@ $__ttDbDriver = (string)(getenv('TT_DB_DRIVER') ?: 'mysql');
 $__ttDbHost = (string)(getenv('TT_DB_HOST') ?: '127.0.0.1');
 $__ttDbName = (string)(getenv('TT_DB_NAME') ?: 'timetable_app');
 $__ttDbUser = (string)(getenv('TT_DB_USER') ?: 'root');
-$__ttDbPass = (string)(getenv('TT_DB_PASS') ?: ''); // XAMPP ปกติว่าง
+$__ttDbPass = (string)(getenv('TT_DB_PASS') ?: ''); 
 
 define('DB_DRIVER', $__ttDbDriver);
 define('DB_HOST', $__ttDbHost);

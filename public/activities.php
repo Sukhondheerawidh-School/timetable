@@ -122,10 +122,19 @@ $flash = flash_get();
           <tr class="border-t hover:bg-slate-50 transition-colors">
             <td class="px-4 py-3 font-medium"><?= htmlspecialchars($r['activity_name']); ?></td>
             <td class="px-4 py-3">
-              <?= th_dow($r['day_of_week']); ?> / คาบ <?= (int)$r['period_no']; ?>
-              <?php if ($r['start_time'] && $r['end_time']): ?>
-                <div class="text-xs text-slate-500">(<?= substr($r['start_time'],0,5); ?>–<?= substr($r['end_time'],0,5); ?>)</div>
-              <?php endif; ?>
+              <div class="flex items-center gap-2">
+                <div>
+                  <?php if ($r['is_all_day']): ?>
+                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-100 border border-purple-300 text-purple-900 text-xs font-semibold">🌅 ทั้งวัน</span>
+                    <div class="text-xs text-slate-500 mt-1"><?= th_dow($r['day_of_week']); ?></div>
+                  <?php else: ?>
+                    <div><?= th_dow($r['day_of_week']); ?> / คาบ <?= (int)$r['period_no']; ?></div>
+                    <?php if ($r['start_time'] && $r['end_time']): ?>
+                      <div class="text-xs text-slate-500">(<?= substr($r['start_time'],0,5); ?>–<?= substr($r['end_time'],0,5); ?>)</div>
+                    <?php endif; ?>
+                  <?php endif; ?>
+                </div>
+              </div>
             </td>
             <td class="px-4 py-3">
               <?php if (!empty($clsMap[$r['id']])): ?>

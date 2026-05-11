@@ -151,31 +151,52 @@ include __DIR__.'/../partials/navbar.php';
   </form>
 
   <!-- Action buttons -->
-  <div class="bg-white rounded-2xl shadow p-4 mb-4 flex justify-end gap-2">
-    <a href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no) ?>"
-       class="px-3 py-2 rounded border hover:bg-slate-50">
-      📌 รายงานวิชาที่ยังลงไม่ได้
-    </a>
-    <button type="button" id="btnAutoSchedule"
-       class="px-3 py-2 rounded bg-slate-900 text-white hover:bg-slate-800">
-      🚀 จัดตารางอัตโนมัติ
-    </button>
-    <button type="button" id="btnCopy"
-            class="px-3 py-2 rounded border hover:bg-slate-50">
-      คัดลอกจากเทอมก่อน
-    </button>
-    <button type="button" id="btnClearAuto"
-            class="px-3 py-2 rounded border text-orange-600 hover:bg-orange-50">
-      ลบคาบอัตโนมัติทั้งหมด
-    </button>
-    <button type="button" id="btnClearAll"
-            class="px-3 py-2 rounded border text-rose-600 hover:bg-rose-50">
-      🗑️ ลบตารางทั้งหมด
-    </button>
-    <a href="<?= url('timetable.php?view=class&year_id='.$year_id.'&term_no='.$term_no) ?>"
-       class="px-3 py-2 rounded border hover:bg-slate-50">
-      กลับไปยังตาราง
-    </a>
+  <div class="bg-white rounded-2xl shadow p-4 mb-4 flex flex-wrap items-center gap-2">
+    <!-- กลุ่มซ้าย: ดูข้อมูล -->
+    <div class="flex flex-wrap gap-2 flex-1">
+      <button type="button" id="btnAnalyze"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 text-sm font-medium transition">
+        🔍 วิเคราะห์ความเป็นไปได้
+      </button>
+      <a href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no) ?>"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 text-sm font-medium transition">
+        📌 วิชาที่ยังลงไม่ได้
+      </a>
+      <a href="<?= url('timetable.php?view=class&year_id='.$year_id.'&term_no='.$term_no) ?>"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 text-sm font-medium transition">
+        📅 ดูตารางสอน
+      </a>
+    </div>
+
+    <!-- เส้นแบ่ง -->
+    <div class="hidden md:block w-px h-8 bg-slate-200"></div>
+
+    <!-- กลุ่มกลาง: จัดการตาราง -->
+    <div class="flex flex-wrap gap-2">
+      <button type="button" id="btnAutoSchedule"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700 text-sm font-medium transition shadow-sm">
+        🚀 จัดตารางอัตโนมัติ
+      </button>
+      <button type="button" id="btnCopy"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-sm font-medium transition">
+        📋 คัดลอกจากเทอมก่อน
+      </button>
+    </div>
+
+    <!-- เส้นแบ่ง -->
+    <div class="hidden md:block w-px h-8 bg-slate-200"></div>
+
+    <!-- กลุ่มขวา: ลบ (destructive) -->
+    <div class="flex flex-wrap gap-2">
+      <button type="button" id="btnClearAuto"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 text-sm font-medium transition">
+        🧹 ลบคาบอัตโนมัติ
+      </button>
+      <button type="button" id="btnClearAll"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-medium transition">
+        🗑️ ลบตารางทั้งหมด
+      </button>
+    </div>
   </div>
 
   <!-- ✅ สรุปภาพรวม -->
@@ -324,6 +345,31 @@ include __DIR__.'/../partials/navbar.php';
         </div>
       </div>
     <?php endif; ?>
+  </div>
+</div>
+
+<!-- ✅ Analyze Modal -->
+<div id="analyzeModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col" style="max-height:90vh">
+    <div class="px-6 py-4 bg-violet-700 flex items-center justify-between">
+      <h3 class="text-white font-semibold text-lg flex items-center gap-2">
+        <span class="text-2xl">🔍</span>วิเคราะห์ความเป็นไปได้
+      </h3>
+      <button id="analyzeClose" class="text-white opacity-70 hover:opacity-100 text-2xl leading-none">&times;</button>
+    </div>
+    <div class="overflow-y-auto flex-1 p-6" id="analyzeBody">
+      <div class="flex items-center justify-center py-10 text-slate-400" id="analyzeLoading">
+        <svg class="animate-spin h-6 w-6 mr-3 text-violet-500" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        กำลังวิเคราะห์...
+      </div>
+      <div id="analyzeResult" class="hidden space-y-3"></div>
+    </div>
+    <div class="px-6 py-4 border-t bg-slate-50 flex justify-end">
+      <button id="analyzeCloseBtn" class="px-5 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-700 text-sm font-medium">ปิด</button>
+    </div>
   </div>
 </div>
 
@@ -492,6 +538,94 @@ confirmModal.addEventListener('click', (e) => {
     confirmModal.classList.add('hidden');
     confirmStep = 0;
     currentCallback = null;
+  }
+});
+
+// ✅ ปุ่มวิเคราะห์ความเป็นไปได้
+const btnAnalyze     = document.getElementById('btnAnalyze');
+const analyzeModal   = document.getElementById('analyzeModal');
+const analyzeBody    = document.getElementById('analyzeBody');
+const analyzeLoading = document.getElementById('analyzeLoading');
+const analyzeResult  = document.getElementById('analyzeResult');
+
+function closeAnalyzeModal() { analyzeModal.classList.add('hidden'); }
+document.getElementById('analyzeClose').addEventListener('click', closeAnalyzeModal);
+document.getElementById('analyzeCloseBtn').addEventListener('click', closeAnalyzeModal);
+analyzeModal.addEventListener('click', (e) => { if (e.target === analyzeModal) closeAnalyzeModal(); });
+
+btnAnalyze.addEventListener('click', async () => {
+  analyzeModal.classList.remove('hidden');
+  analyzeLoading.classList.remove('hidden');
+  analyzeResult.classList.add('hidden');
+  analyzeResult.innerHTML = '';
+
+  try {
+    const data = await callAPI('timetable_auto_analyze.php', { year_id, term_no });
+
+    analyzeLoading.classList.add('hidden');
+    analyzeResult.classList.remove('hidden');
+
+    if (data.error) {
+      analyzeResult.innerHTML = `<div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700">❌ ${data.error}</div>`;
+      return;
+    }
+
+    const { errors = [], warnings = [], summary = {} } = data;
+
+    // Summary bar
+    let html = `
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="text-xs text-slate-500 mb-1">กำลังสอนทั้งหมด</div>
+          <div class="text-xl font-bold text-slate-800">${summary.total_demand ?? '-'} คาบ</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="text-xs text-slate-500 mb-1">คาบต่อสัปดาห์ (grid)</div>
+          <div class="text-xl font-bold text-slate-800">${summary.total_slots_per_week ?? '-'} คาบ</div>
+          <div class="text-xs text-slate-400">${summary.periods_per_day ?? '-'} คาบ/วัน × 5 วัน</div>
+        </div>
+        <div class="bg-slate-50 rounded-xl p-3 text-center">
+          <div class="text-xs text-slate-500 mb-1">จำนวนรายการ</div>
+          <div class="text-xl font-bold text-slate-800">${summary.total_loads ?? '-'} รายการ</div>
+        </div>
+      </div>
+    `;
+
+    if (errors.length === 0 && warnings.length === 0) {
+      html += `<div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 flex items-start gap-3">
+        <span class="text-2xl">✅</span>
+        <div>
+          <div class="font-semibold">ผ่านการตรวจสอบ</div>
+          <div class="text-sm mt-1">ไม่พบปัญหาด้านความเป็นไปได้ที่ชัดเจน สามารถจัดตารางได้</div>
+        </div>
+      </div>`;
+    }
+
+    if (errors.length > 0) {
+      html += `<div class="font-semibold text-rose-700 mb-2">🚫 ปัญหาร้ายแรง (${errors.length} รายการ) — อาจจัดตารางไม่ได้เลย</div>`;
+      for (const e of errors) {
+        html += `<div class="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+          <div class="font-medium text-rose-800">${e.icon} ${e.title}</div>
+          <div class="text-sm text-rose-600 mt-1">${e.detail}</div>
+        </div>`;
+      }
+    }
+
+    if (warnings.length > 0) {
+      html += `<div class="font-semibold text-amber-700 mb-2 ${errors.length ? 'mt-4' : ''}">⚠️ คำเตือน (${warnings.length} รายการ) — อาจลงได้ยาก</div>`;
+      for (const w of warnings) {
+        html += `<div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <div class="font-medium text-amber-800">${w.icon} ${w.title}</div>
+          <div class="text-sm text-amber-600 mt-1">${w.detail}</div>
+        </div>`;
+      }
+    }
+
+    analyzeResult.innerHTML = html;
+  } catch(err) {
+    analyzeLoading.classList.add('hidden');
+    analyzeResult.classList.remove('hidden');
+    analyzeResult.innerHTML = `<div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700">❌ ${err.message}</div>`;
   }
 });
 

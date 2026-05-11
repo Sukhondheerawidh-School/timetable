@@ -41,6 +41,8 @@ if (!is_array($input)) $input = [];
 $year_id = (int)($input['year_id'] ?? $_POST['year_id'] ?? $_GET['year_id'] ?? 0);
 $term_no = (int)($input['term_no'] ?? $_POST['term_no'] ?? $_GET['term_no'] ?? 1);
 $fallback = (int)($_POST['fallback'] ?? 0);
+$max_passes_input = (int)($input['max_passes'] ?? $_POST['max_passes'] ?? $_GET['max_passes'] ?? 5);
+$MAX_PASSES = max(1, min(10, $max_passes_input));
 
 // ตั้ง header ตามโหมด
 if (!$fallback) {
@@ -319,6 +321,25 @@ if ($action === 'copy_prev') {
 }
 
 /* --------------- ENGINE ---------------- */
+// ✅ ป้องกัน timeout และ memory สำหรับการจัดตาราง (จำเป็นต้องตั้งก่อน action guard)
+set_time_limit(300);           // 5 นาที (พอสำหรับโรงเรียนใหญ่)
+ignore_user_abort(true);       // ไม่หยุดถ้า browser ปิด — transaction ต้อง commit ให้ครบ
+ini_set('memory_limit', '256M'); // default 128M อาจไม่พอสำหรับข้อมูลขนาดใหญ่
+
+// ✅ ป้องกัน admin กด "จัดอัตโนมัติ" พร้อมกัน — ใช้ lock file ต่อ year+term
+$lockFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "tt_run_{$year_id}_{$term_no}.lock";
+$lockFp = fopen($lockFile, 'c');
+if (!$lockFp || !flock($lockFp, LOCK_EX | LOCK_NB)) {
+  if ($lockFp) fclose($lockFp);
+  respond(['error' => '⏳ กำลังจัดตารางอยู่แล้ว (โดย admin คนอื่น) กรุณารอสักครู่แล้วลองใหม่']);
+}
+// คืน lock อัตโนมัติเมื่อ script จบ (ทั้ง commit, error, หรือ timeout)
+register_shutdown_function(function() use ($lockFp, $lockFile) {
+  flock($lockFp, LOCK_UN);
+  fclose($lockFp);
+  @unlink($lockFile);
+});
+
 $optimizerPath = __DIR__.'/../app/timetable_optimizer.php';
 if (!file_exists($optimizerPath)) {
   respond(['error' => "ไม่พบไฟล์: $optimizerPath"]);
@@ -719,7 +740,6 @@ $estimateFeasibleCount = function(array $L, int $passNo, int $maxPasses) use (
 try{
   $pdo->beginTransaction();
 
-  $MAX_PASSES = 3;
   $passCount = 0;
 
   while ($passCount < $MAX_PASSES && count($remain) > 0) {
@@ -777,11 +797,11 @@ try{
         $candidates = [];
         
         $days = [1,2,3,4,5];
-        if ($passCount > 1) shuffle($days);
+        shuffle($days);
         
         foreach($days as $d){
           $periodsToTry = $periods;
-          if ($passCount > 1) shuffle($periodsToTry);
+          shuffle($periodsToTry);
           
           foreach($periodsToTry as $p){
             $p=(int)$p;
@@ -1214,6 +1234,15 @@ try{
   $pdo->commit();
   
   $successRate = $attempt > 0 ? round((($attempt - count($fails)) / $attempt) * 100, 1) : 100;
+  
+  // ✅ คาบ $logs ไว้แค่  200 บรรทัดท้ายเพื่อไม่ให้ JSON response ใหญ่เกินไป
+  if (count($logs) > 200) {
+    $logs = array_merge(
+      array_slice($logs, 0, 100),
+      ['... (ตัดลง '.( count($logs) - 200).' บรรทัด) ...'],
+      array_slice($logs, -100)
+    );
+  }
   
   respond([
     'ok'=>true,

@@ -581,19 +581,56 @@ if ($grade_label_for_view){
   $st=$pdo->prepare('SELECT period_no FROM grade_breaks WHERE grade_label=?'); $st->execute([$grade_label_for_view]);
   $breakPeriods=array_map('intval',$st->fetchAll(PDO::FETCH_COLUMN));
 }
+
+// ✅ Get all periods for populating all-day activities
+$allPeriods = array_map('intval', array_map(fn($p) => $p['period_no'], $periods));
+$nonBreakPeriods = array_diff($allPeriods, $breakPeriods);
+
 $activityCell=[];
 if ($view==='class'){
+  // Regular activities (single period)
   $st=$pdo->prepare('SELECT ag.day_of_week,ag.period_no,ag.activity_name
                      FROM activity_groups ag JOIN activity_classes ac ON ac.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=?');
+                     WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.is_all_day=0');
   $st->execute([$year_id,$term_no,$class_id]);
   foreach($st as $r) $activityCell[(int)$r['day_of_week']][(int)$r['period_no']]=$r['activity_name'];
+  
+  // All-day activities - populate across all non-break periods
+  $stAllDay=$pdo->prepare('SELECT ag.day_of_week,ag.activity_name
+                     FROM activity_groups ag JOIN activity_classes ac ON ac.activity_id=ag.id
+                     WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.is_all_day=1');
+  $stAllDay->execute([$year_id,$term_no,$class_id]);
+  foreach($stAllDay as $r) {
+    $day = (int)$r['day_of_week'];
+    foreach ($nonBreakPeriods as $pno) {
+      // Only populate if not already has an activity
+      if (!isset($activityCell[$day][$pno])) {
+        $activityCell[$day][$pno] = $r['activity_name'];
+      }
+    }
+  }
 }else{
+  // Regular activities (single period)
   $st=$pdo->prepare('SELECT ag.day_of_week,ag.period_no,ag.activity_name
                      FROM activity_groups ag JOIN activity_teachers at ON at.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=?');
+                     WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.is_all_day=0');
   $st->execute([$year_id,$term_no,$teacher_id]);
   foreach($st as $r) $activityCell[(int)$r['day_of_week']][(int)$r['period_no']]=$r['activity_name'];
+  
+  // All-day activities - populate across all non-break periods (teachers don't have breaks, but we still skip all periods if there's no regular activity)
+  $stAllDay=$pdo->prepare('SELECT ag.day_of_week,ag.activity_name
+                     FROM activity_groups ag JOIN activity_teachers at ON at.activity_id=ag.id
+                     WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.is_all_day=1');
+  $stAllDay->execute([$year_id,$term_no,$teacher_id]);
+  foreach($stAllDay as $r) {
+    $day = (int)$r['day_of_week'];
+    foreach ($allPeriods as $pno) {
+      // Only populate if not already has an activity
+      if (!isset($activityCell[$day][$pno])) {
+        $activityCell[$day][$pno] = $r['activity_name'];
+      }
+    }
+  }
 }
 
 /* =========================
@@ -1118,9 +1155,12 @@ details:not(.tt-nav)[open] > summary {
 <div class="max-w-7xl mx-auto px-4 mt-8">
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-xl font-semibold">ตารางสอน</h1>
-    <?php if ($isAdmin): ?>
-      <a href="<?= url('timetable_auto_dashboard.php?year_id='.$year_id.'&term_no='.$term_no); ?>" class="px-3 py-2 rounded-xl border text-sm">เปิดหน้าจัดอัตโนมัติ</a>
-    <?php endif; ?>
+    <div class="flex items-center gap-2">
+      <a href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no); ?>" class="px-3 py-2 rounded-xl border text-sm bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100">รายวิชาที่ยังลงไม่ได้</a>
+      <?php if ($isAdmin): ?>
+        <a href="<?= url('timetable_auto_dashboard.php?year_id='.$year_id.'&term_no='.$term_no); ?>" class="px-3 py-2 rounded-xl border text-sm">เปิดหน้าจัดอัตโนมัติ</a>
+      <?php endif; ?>
+    </div>
   </div>
 
   <?php if($flash): ?><div class="mb-3 p-3 rounded-xl flex items-start gap-2 <?= $flash['type']==='success'?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-rose-50 text-rose-700 border border-rose-200'; ?>"><?= $flash['type']==='success'?'<span class="text-lg">&#x2705;</span>':'<span class="text-lg">&#x274c;</span>'; ?><span><?= htmlspecialchars($flash['msg']); ?></span></div><?php endif; ?>

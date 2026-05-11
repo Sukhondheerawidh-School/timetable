@@ -63,25 +63,48 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     if ($year_id > 0) $term_no = tt_validate_term_no($pdo, $year_id, $term_no);
     $name     = trim($_POST['activity_name'] ?? '');
     $dow      = (int)($_POST['day_of_week'] ?? 0);
-    $pno      = (int)($_POST['period_no'] ?? 0);
+    $is_all_day = (int)($_POST['is_all_day'] ?? 0) === 1 ? 1 : 0;
+    $pno      = $is_all_day ? null : ((int)($_POST['period_no'] ?? 0) ?: null);
     $room_id  = ($_POST['room_id'] ?? '')!=='' ? (int)$_POST['room_id'] : null;
     $class_ids = array_map('intval', (array)($_POST['class_ids'] ?? []));
     $teacher_ids = array_map('intval', (array)($_POST['teacher_ids'] ?? []));
 
-    if(!$year_id || !$term_no || $name==='' || !$dow || !$pno || !$class_ids || !$teacher_ids){
-      $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/คาบ/ชั้น/ครู)';
+    // For all-day activities, teacher is optional; for regular, teacher is required
+    $validTeachers = $is_all_day ? true : !empty($teacher_ids);
+    $validPeriod = $is_all_day ? true : $pno !== null;
+
+    if(!$year_id || !$term_no || $name==='' || !$dow || !$class_ids || !$validTeachers || !$validPeriod){
+      if ($is_all_day) {
+        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/ชั้น) - ครูเป็นตัวเลือก';
+      } else {
+        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/คาบ/ชั้น/ครู)';
+      }
     }else{
       try{
+        if ($is_all_day) {
+          $chk = $pdo->prepare('SELECT id FROM activity_groups WHERE academic_year_id=? AND term_no=? AND day_of_week=? AND activity_name=? AND is_all_day=1 LIMIT 1');
+          $chk->execute([$year_id, $term_no, $dow, $name]);
+        } else {
+          $chk = $pdo->prepare('SELECT id FROM activity_groups WHERE academic_year_id=? AND term_no=? AND day_of_week=? AND period_no=? AND activity_name=? AND is_all_day=0 LIMIT 1');
+          $chk->execute([$year_id, $term_no, $dow, $pno, $name]);
+        }
+        if ($chk->fetch()) {
+          throw new Exception('ช่วงเวลาเดียวกันมีชื่อกิจกรรมนี้อยู่แล้ว');
+        }
+
         $pdo->beginTransaction();
-        $ins = $pdo->prepare('INSERT INTO activity_groups(academic_year_id, term_no, activity_name, day_of_week, period_no, room_id) VALUES (?,?,?,?,?,?)');
-        $ins->execute([$year_id,$term_no,$name,$dow,$pno,$room_id]);
+        $ins = $pdo->prepare('INSERT INTO activity_groups(academic_year_id, term_no, activity_name, day_of_week, period_no, room_id, is_all_day) VALUES (?,?,?,?,?,?,?)');
+        $ins->execute([$year_id,$term_no,$name,$dow,$pno,$room_id,$is_all_day]);
         $aid = (int)$pdo->lastInsertId();
 
         $insC = $pdo->prepare('INSERT INTO activity_classes(activity_id,class_id) VALUES (?,?)');
         foreach ($class_ids as $cid){ $insC->execute([$aid,$cid]); }
 
-        $insT = $pdo->prepare('INSERT INTO activity_teachers(activity_id,teacher_id) VALUES (?,?)');
-        foreach ($teacher_ids as $tid){ $insT->execute([$aid,$tid]); }
+        // Only add teachers if provided (optional for all-day)
+        if (!empty($teacher_ids)){
+          $insT = $pdo->prepare('INSERT INTO activity_teachers(activity_id,teacher_id) VALUES (?,?)');
+          foreach ($teacher_ids as $tid){ $insT->execute([$aid,$tid]); }
+        }
 
         $pdo->commit();
 
@@ -92,6 +115,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
           'day_of_week' => $dow,
           'period_no' => $pno,
           'room_id' => $room_id,
+          'is_all_day' => $is_all_day,
           'class_ids' => $class_ids,
           'teacher_ids' => $teacher_ids,
         ]);
@@ -140,7 +164,23 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
 
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อกิจกรรม</label>
-      <input name="activity_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required placeholder="เช่น ลูกเสือ / แนะแนว / ชุมนุม" value="<?= htmlspecialchars($_POST['activity_name'] ?? ''); ?>">
+      <input name="activity_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required placeholder="เช่น ลูกเสือ / แนะแนว / ชุมนุม / Track / ฝึกอาชีพ" value="<?= htmlspecialchars($_POST['activity_name'] ?? ''); ?>">
+    </div>
+
+    <!-- ✅ Checkbox for all-day activity -->
+    <div>
+      <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 cursor-pointer w-fit">
+        <input 
+          type="checkbox" 
+          name="is_all_day" 
+          value="1" 
+          id="is-all-day-checkbox"
+          class="w-4 h-4"
+          <?= (isset($_POST['is_all_day']) && $_POST['is_all_day'] === '1') ? 'checked' : ''; ?>
+        >
+        <span class="text-sm font-medium text-blue-900">กิจกรรมทั้งวัน (เรียนตลอดวัน ข้ามคาบพัก)</span>
+      </label>
+      <p class="text-xs text-slate-500 mt-1">💡 ติ๊กเลือกหากกิจกรรมนี้ใช้เวลาตลอดวันเช่น Track, ฝึกอาชีพ ฯลฯ</p>
     </div>
 
     <div class="grid md:grid-cols-3 gap-4">
@@ -152,8 +192,8 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
           <?php endforeach; ?>
         </select>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบ</label>
+      <div id="period-field">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบ <span class="text-red-500">*</span></label>
         <select name="period_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
           <?php foreach($periods as $p): ?>
             <option value="<?= (int)$p['period_no']; ?>" <?= (isset($_POST['period_no']) && (int)$_POST['period_no']===(int)$p['period_no'])?'selected':''; ?>>
@@ -211,8 +251,8 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
 
     <!-- ✅ ครู - แบบเช็กบ็อกซ์ + ค้นหา -->
-    <div>
-      <label class="block text-sm font-semibold text-slate-700 mb-1.5">ครูผู้สอน (เลือกได้หลายคน)</label>
+    <div id="teacher-field">
+      <label class="block text-sm font-semibold text-slate-700 mb-1.5">ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span></label>
 
       <!-- ช่องค้นหา -->
       <input 
@@ -386,6 +426,31 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   filter();
+});
+
+// ✅ Handle all-day activity checkbox - show/hide period and make teachers optional
+document.addEventListener('DOMContentLoaded', function() {
+  const checkbox = document.getElementById('is-all-day-checkbox');
+  const periodField = document.getElementById('period-field');
+  const teacherField = document.getElementById('teacher-field');
+  const periodSelect = document.querySelector('select[name="period_no"]');
+  const teacherCheckboxes = Array.from(document.querySelectorAll('input[name="teacher_ids[]"]'));
+  
+  function updateFieldsDisplay() {
+    const isAllDay = checkbox.checked;
+    if (isAllDay) {
+      periodField.style.display = 'none';
+      periodSelect.removeAttribute('required');
+      teacherField.querySelector('label').innerHTML = 'ครูผู้อำนวยการ (ถ้ามี) <span class="text-slate-500 text-xs font-normal">- ไม่จำเป็นต้องใส่ครู</span>';
+    } else {
+      periodField.style.display = 'block';
+      periodSelect.setAttribute('required', 'required');
+      teacherField.querySelector('label').innerHTML = 'ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span>';
+    }
+  }
+
+  checkbox.addEventListener('change', updateFieldsDisplay);
+  updateFieldsDisplay(); // Initial state
 });
 </script>
 

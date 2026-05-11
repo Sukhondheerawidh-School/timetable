@@ -2,7 +2,8 @@
 require_once __DIR__.'/../app/auth.php';
 require_once __DIR__.'/../app/helpers.php';
 require_once __DIR__.'/../app/db.php';
-requireLogin(); requireAdmin();
+requireLogin();
+$isAdmin = (currentUser()['role'] ?? '') === 'admin';
 
 $years = $pdo->query('SELECT id, year_label, is_active FROM academic_years ORDER BY year_label DESC')->fetchAll();
 
@@ -30,6 +31,7 @@ WITH loads AS (
     tl.subject_id,
     c.class_name,
     c.grade_label,
+    s.subject_name AS raw_name,
     CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name
          ELSE CONCAT(s.subject_code,' - ',s.subject_name) END AS label,
     MAX(CAST(tl.periods_per_week AS SIGNED)) AS quota,
@@ -40,7 +42,7 @@ WITH loads AS (
   JOIN classes  c ON c.id = tl.class_id
   JOIN teachers t ON t.id = tl.teacher_id
   WHERE tl.academic_year_id = :y AND tl.term_no = :t
-  GROUP BY tl.class_id, tl.subject_id, c.class_name, c.grade_label, label
+  GROUP BY tl.class_id, tl.subject_id, c.class_name, c.grade_label, s.subject_name, label
 ),
 used AS (
   SELECT
@@ -58,14 +60,13 @@ SELECT
   l.grade_label,
   l.label,
   l.teacher_names,
-  COALESCE(u.used_cnt, 0) AS used_cnt,
+  COALESCE(u1.used_cnt, 0) + COALESCE(u2.used_cnt, 0) AS used_cnt,
   l.quota,
-  GREATEST(l.quota - COALESCE(u.used_cnt, 0), 0) AS remain
+  GREATEST(l.quota - COALESCE(u1.used_cnt, 0) - COALESCE(u2.used_cnt, 0), 0) AS remain
 FROM loads l
-LEFT JOIN used u
-  ON u.class_id = l.class_id
- AND u.subject_name = l.label
-WHERE GREATEST(l.quota - COALESCE(u.used_cnt, 0), 0) > 0
+LEFT JOIN used u1 ON u1.class_id = l.class_id AND u1.subject_name = l.label
+LEFT JOIN used u2 ON u2.class_id = l.class_id AND u2.subject_name = l.raw_name AND l.label <> l.raw_name
+WHERE GREATEST(l.quota - COALESCE(u1.used_cnt, 0) - COALESCE(u2.used_cnt, 0), 0) > 0
 ORDER BY l.class_name, remain DESC, l.label
 SQL;
 
@@ -128,18 +129,16 @@ if ($print) {
       <table>
         <thead>
           <tr>
-            <th style="width:140px;">ห้อง</th>
+            <th style="width:120px;">ห้อง</th>
             <th>วิชา</th>
             <th style="width:220px;">ครู</th>
-            <th class="num" style="width:70px;">ใช้ไป</th>
-            <th class="num" style="width:70px;">กำลัง</th>
-            <th class="num" style="width:80px;">คงเหลือ</th>
+            <th class="num" style="width:130px;">คาบที่ยังขาด</th>
           </tr>
         </thead>
         <tbody>
           <?php if (!$rows): ?>
             <tr>
-              <td colspan="6" style="text-align:center; padding:18px; color:#047857;">✅ ไม่มีรายการคงเหลือ (ลงครบแล้ว)</td>
+              <td colspan="4" style="text-align:center; padding:18px; color:#047857;">✅ ไม่มีรายการคงเหลือ (ลงครบแล้ว)</td>
             </tr>
           <?php else: ?>
             <?php foreach ($rows as $r): ?>
@@ -147,9 +146,7 @@ if ($print) {
                 <td><strong><?= htmlspecialchars($r['class_name']) ?></strong></td>
                 <td><?= htmlspecialchars($r['label']) ?></td>
                 <td><?= htmlspecialchars($r['teacher_names'] ?? '-') ?></td>
-                <td class="num"><?= (int)$r['used_cnt'] ?></td>
-                <td class="num"><?= (int)$r['quota'] ?></td>
-                <td class="num"><span class="badge"><?= (int)$r['remain'] ?></span></td>
+                <td class="num">ยังขาด <span class="badge"><?= (int)$r['remain'] ?></span> คาบ</td>
               </tr>
             <?php endforeach; ?>
           <?php endif; ?>
@@ -176,7 +173,9 @@ include __DIR__.'/../partials/navbar.php';
   <div class="flex items-center justify-between mb-4">
     <h1 class="text-xl font-semibold">📌 รายงานวิชาที่ยังลงไม่ได้</h1>
     <div class="flex gap-2">
-      <a class="px-3 py-2 rounded border hover:bg-slate-50" href="<?= url('timetable_auto_dashboard.php?year_id='.$year_id.'&term_no='.$term_no) ?>">กลับไปหน้าอัตโนมัติ</a>
+      <?php if ($isAdmin): ?>
+        <a class="px-3 py-2 rounded border hover:bg-slate-50" href="<?= url('timetable_auto_dashboard.php?year_id='.$year_id.'&term_no='.$term_no) ?>">กลับไปหน้าอัตโนมัติ</a>
+      <?php endif; ?>
       <a class="px-3 py-2 rounded border hover:bg-slate-50" href="<?= url('timetable.php?view=class&year_id='.$year_id.'&term_no='.$term_no) ?>">ไปตารางสอน</a>
     </div>
   </div>
@@ -218,6 +217,7 @@ include __DIR__.'/../partials/navbar.php';
         <div class="text-2xl font-bold text-rose-600"><?= number_format($totalRemain) ?></div>
         <div class="text-xs text-slate-500">คาบ</div>
       </div>
+      <?php if ($isAdmin): ?>
       <div>
         <div class="text-sm text-slate-600">พิมพ์</div>
         <div class="flex flex-wrap gap-2 items-center">
@@ -225,13 +225,16 @@ include __DIR__.'/../partials/navbar.php';
           <div class="text-xs text-slate-500">เปิดแท็บใหม่เพื่อพิมพ์</div>
         </div>
       </div>
+      <?php endif; ?>
     </div>
   </div>
 
   <div class="bg-white rounded-2xl shadow overflow-hidden">
     <div class="px-4 py-3 font-medium border-b flex items-center justify-between gap-3">
       <span>รายการที่ยังลงไม่ครบ (remain &gt; 0)</span>
-      <a target="_blank" rel="noopener" class="px-3 py-2 rounded border hover:bg-slate-50" href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no.'&print=1') ?>">🖨️ พิมพ์</a>
+      <?php if ($isAdmin): ?>
+        <a target="_blank" rel="noopener" class="px-3 py-2 rounded border hover:bg-slate-50" href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no.'&print=1') ?>">🖨️ พิมพ์</a>
+      <?php endif; ?>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
@@ -240,16 +243,14 @@ include __DIR__.'/../partials/navbar.php';
             <th class="text-left px-3 py-2 font-semibold">ห้อง</th>
             <th class="text-left px-3 py-2 font-semibold">วิชา</th>
             <th class="text-left px-3 py-2 font-semibold">ครู</th>
-            <th class="text-right px-3 py-2 font-semibold">ใช้ไป</th>
-            <th class="text-right px-3 py-2 font-semibold">กำลัง</th>
-            <th class="text-right px-3 py-2 font-semibold">คงเหลือ</th>
-            <th class="text-right px-3 py-2 font-semibold">ไปลงเอง</th>
+            <th class="text-center px-3 py-2 font-semibold">คาบที่ยังขาด</th>
+            <th class="px-3 py-2"></th>
           </tr>
         </thead>
         <tbody>
           <?php if (!$rows): ?>
             <tr>
-              <td colspan="7" class="px-3 py-8 text-center text-emerald-700 bg-emerald-50">
+              <td colspan="5" class="px-3 py-8 text-center text-emerald-700 bg-emerald-50">
                 ✅ ไม่มีรายการคงเหลือ (ลงครบแล้ว)
               </td>
             </tr>
@@ -259,15 +260,11 @@ include __DIR__.'/../partials/navbar.php';
                 <td class="px-3 py-2 font-medium"><?= htmlspecialchars($r['class_name']) ?></td>
                 <td class="px-3 py-2"><?= htmlspecialchars($r['label']) ?></td>
                 <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars($r['teacher_names'] ?? '-') ?></td>
-                <td class="px-3 py-2 text-right"><?= (int)$r['used_cnt'] ?></td>
-                <td class="px-3 py-2 text-right"><?= (int)$r['quota'] ?></td>
-                <td class="px-3 py-2 text-right">
-                  <span class="inline-flex px-2 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
-                    <?= (int)$r['remain'] ?>
-                  </span>
+                <td class="px-3 py-2 text-center">
+                  ยังขาด <span class="inline-flex px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-semibold"><?= (int)$r['remain'] ?></span> คาบ
                 </td>
-                <td class="px-3 py-2 text-right">
-                  <a class="text-indigo-600 hover:underline" href="<?= url('timetable.php?view=class&year_id='.$year_id.'&term_no='.$term_no.'&class_id='.(int)$r['class_id']) ?>">เปิดตาราง</a>
+                <td class="px-3 py-2 text-center">
+                  <a class="text-indigo-600 hover:underline text-sm" href="<?= url('timetable.php?view=class&year_id='.$year_id.'&term_no='.$term_no.'&class_id='.(int)$r['class_id']) ?>">ไปจัดตาราง →</a>
                 </td>
               </tr>
             <?php endforeach; ?>
