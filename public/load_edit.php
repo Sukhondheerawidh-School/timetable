@@ -44,6 +44,8 @@ $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
+  } elseif (!canEditSection('loads')) {
+    $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
   } else {
     $year_id = (int)($_POST['academic_year_id'] ?? 0);
     $term_no = (int)($_POST['term_no'] ?? 0);

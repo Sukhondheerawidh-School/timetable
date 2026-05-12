@@ -284,16 +284,34 @@ if ($mode==='class' && $class_id>0) {
 }
 
 // ============== สไตล์ PDF/Preview ==============
+$_fontDir = __DIR__ . '/assets/fonts/';
+$_b64Regular = is_file($_fontDir.'Sarabun-Regular.ttf')
+    ? 'data:font/truetype;base64,'.base64_encode(file_get_contents($_fontDir.'Sarabun-Regular.ttf'))
+    : null;
+$_b64Bold = is_file($_fontDir.'Sarabun-Bold.ttf')
+    ? 'data:font/truetype;base64,'.base64_encode(file_get_contents($_fontDir.'Sarabun-Bold.ttf'))
+    : null;
+$_urlRegular = url('assets/fonts/Sarabun-Regular.ttf');
+$_urlBold    = url('assets/fonts/Sarabun-Bold.ttf');
+
+// src: base64 (ไม่ต้องดึงเน็ต) ก่อน แล้ว fallback URL ตรง
+$_srcRegular = $_b64Regular
+    ? "url('{$_b64Regular}') format('truetype'), url('{$_urlRegular}') format('truetype')"
+    : "url('{$_urlRegular}') format('truetype')";
+$_srcBold = $_b64Bold
+    ? "url('{$_b64Bold}') format('truetype'), url('{$_urlBold}') format('truetype')"
+    : "url('{$_urlBold}') format('truetype')";
+
 $css = <<<CSS
 @page { size: A4 landscape; margin: 18mm 14mm; }
 @font-face {
   font-family: 'Sarabun';
-  src: url('fonts/Sarabun-Regular.ttf') format('truetype');
+  src: {$_srcRegular};
   font-weight: normal; font-style: normal;
 }
 @font-face {
   font-family: 'Sarabun';
-  src: url('fonts/Sarabun-Bold.ttf') format('truetype');
+  src: {$_srcBold};
   font-weight: bold; font-style: normal;
 }
 * { font-family: 'Sarabun', DejaVu Sans, sans-serif; }
@@ -317,7 +335,10 @@ $css = <<<CSS
 CSS;
 
 // ============== สร้าง HTML เต็ม ==============
-$html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'.$css.'</style></head><body>';
+$html  = '<!DOCTYPE html><html><head><meta charset="utf-8">';
+$html .= '<link rel="preconnect" href="https://fonts.googleapis.com">';
+$html .= '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">';
+$html .= '<style>'.$css.'</style></head><body>';
 // ตัด pagebreak หน้าแรกทิ้ง (เพราะเราใส่ <pagebreak /> ใน renderOnePage)
 $html .= preg_replace('/^\s*<pagebreak \/>/','', $pagesHTML);
 $html .= '</body></html>';

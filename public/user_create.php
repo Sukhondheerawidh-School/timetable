@@ -24,8 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $err = 'รหัสผ่านอย่างน้อย 8 ตัวอักษร';
     } elseif ($pass !== $pass2) {
       $err = 'ยืนยันรหัสผ่านไม่ตรงกัน';
-    } elseif (!in_array($role, ['admin','user'], true)) {
+    } elseif (!in_array($role, ['admin','user','superuser'], true)) {
       $err = 'สิทธิ์ไม่ถูกต้อง';
+    } elseif ($role === 'superuser' && !isSuperuser()) {
+      $err = 'เฉพาะ Superuser เท่านั้นที่สามารถกำหนด role นี้ได้';
     } else {
       try {
         $hash = password_hash($pass, PASSWORD_BCRYPT);
@@ -80,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <select name="role" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="user" <?= (($_POST['role'] ?? '')==='user')?'selected':''; ?>>user</option>
           <option value="admin" <?= (($_POST['role'] ?? '')==='admin')?'selected':''; ?>>admin</option>
+          <option value="superuser" <?= (($_POST['role'] ?? '')==='superuser')?'selected':''; ?>>superuser</option>
         </select>
       </div>
 

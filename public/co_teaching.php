@@ -38,6 +38,8 @@ $filter_subject_id = (int)($_GET['filter_subject_id'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf($_POST['csrf'] ?? '')) {
         $err = 'CSRF ไม่ถูกต้อง';
+    } elseif (!canEditSection('timetable')) {
+        $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
     } else {
         $action = $_POST['action'] ?? '';
         
@@ -223,6 +225,21 @@ if ($year_id && $term_no) {
     $pairs = $st->fetchAll();
 }
 
+// ---------- load IDs ที่มีคู่แล้ว (สำหรับ pre-check checkbox) ----------
+$paired_load_ids = [];
+if ($year_id && $term_no) {
+    $stPaired = $pdo->prepare("
+        SELECT DISTINCT main_load_id, co_load_id
+        FROM co_teaching_pairs
+        WHERE year_id = ? AND term_no = ?
+    ");
+    $stPaired->execute([$year_id, $term_no]);
+    foreach ($stPaired->fetchAll() as $row) {
+        $paired_load_ids[(int)$row['main_load_id']] = true;
+        $paired_load_ids[(int)$row['co_load_id']] = true;
+    }
+}
+
 include __DIR__ . '/../partials/head.php';
 include __DIR__ . '/../partials/navbar.php';
 ?>
@@ -331,7 +348,8 @@ include __DIR__ . '/../partials/navbar.php';
                                            class="pair-checkbox" 
                                            data-group="<?= esc($key) ?>"
                                            data-load-id="<?= (int)$load['id'] ?>"
-                                           value="<?= (int)$load['id'] ?>">
+                                           value="<?= (int)$load['id'] ?>"
+                                           <?= isset($paired_load_ids[(int)$load['id']]) ? 'checked' : '' ?>>
                                     <div class="text-sm flex-1">
                                         <span class="font-medium">โหลด #<?= (int)$load['id'] ?></span> – 
                                         ครู: <?= esc($load['teacher_name']) ?>

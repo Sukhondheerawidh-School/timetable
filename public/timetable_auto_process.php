@@ -4,6 +4,11 @@ require_once __DIR__.'/../app/helpers.php';
 require_once __DIR__.'/../app/db.php';
 requireLogin(); requireAdmin();
 
+if (!canEditSection('timetable')) {
+  flash_set('error', '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser');
+  redirect('timetable_auto_dashboard.php');
+}
+
 $year_id = (int)($_GET['year_id'] ?? 0);
 $term_no = (int)($_GET['term_no'] ?? 1);
 

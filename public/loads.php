@@ -37,8 +37,9 @@ if (isset($_GET['term_no']) && $_GET['term_no'] !== '') {
 $termOptions = tt_terms_list($pdo, $year_id);
 
 /** ฟิลเตอร์เสริม */
-$group = isset($_GET['group']) && $_GET['group'] !== '' ? (int)$_GET['group'] : null;
+$group      = isset($_GET['group'])      && $_GET['group']      !== '' ? (int)$_GET['group']      : null;
 $teacher_id = isset($_GET['teacher_id']) && $_GET['teacher_id'] !== '' ? (int)$_GET['teacher_id'] : null;
+$class_id   = isset($_GET['class_id'])   && $_GET['class_id']   !== '' ? (int)$_GET['class_id']   : null;
 
 // ✅ Pagination
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -50,9 +51,10 @@ $currentFilterParams = [
   'year_id' => $year_id,
   'term_no' => $term_no
 ];
-if ($group !== null) $currentFilterParams['group'] = $group;
+if ($group !== null)      $currentFilterParams['group']      = $group;
 if ($teacher_id !== null) $currentFilterParams['teacher_id'] = $teacher_id;
-if ($page > 1) $currentFilterParams['page'] = $page;
+if ($class_id !== null)   $currentFilterParams['class_id']   = $class_id;
+if ($page > 1)            $currentFilterParams['page']       = $page;
 
 // ✅ จัดการการลบทั้งหมด
 $flash = flash_get();
@@ -135,6 +137,7 @@ $stT->execute($paramsT);
 $teachers = $stT->fetchAll();
 
 $subjects = $pdo->query('SELECT id, subject_code, subject_name FROM subjects ORDER BY subject_code')->fetchAll();
+$classes  = $pdo->query('SELECT id, class_name FROM classes ORDER BY class_name')->fetchAll();
 
 /** ✅ นับจำนวนรายการทั้งหมดก่อน */
 $countSql = <<<SQL
@@ -144,8 +147,9 @@ JOIN teachers t ON t.id = tl.teacher_id
 WHERE tl.academic_year_id = :year_id AND tl.term_no = :term_no
 SQL;
 $countParams = ['year_id'=>$year_id, 'term_no'=>$term_no];
-if ($group !== null) { $countSql .= ' AND t.subject_group = :grp'; $countParams['grp'] = $group; }
-if ($teacher_id)    { $countSql .= ' AND t.id = :tid'; $countParams['tid'] = $teacher_id; }
+if ($group !== null)    { $countSql .= ' AND t.subject_group = :grp'; $countParams['grp'] = $group; }
+if ($teacher_id)        { $countSql .= ' AND t.id = :tid';            $countParams['tid'] = $teacher_id; }
+if ($class_id)          { $countSql .= ' AND tl.class_id = :cid';     $countParams['cid'] = $class_id; }
 $countStmt = $pdo->prepare($countSql);
 $countStmt->execute($countParams);
 $total_records = (int)$countStmt->fetchColumn();
@@ -167,7 +171,8 @@ WHERE tl.academic_year_id = :year_id AND tl.term_no = :term_no
 SQL;
 $params = ['year_id'=>$year_id, 'term_no'=>$term_no];
 if ($group !== null) { $sql .= ' AND t.subject_group = :grp'; $params['grp'] = $group; }
-if ($teacher_id)    { $sql .= ' AND t.id = :tid'; $params['tid'] = $teacher_id; }
+if ($teacher_id)     { $sql .= ' AND t.id = :tid';            $params['tid'] = $teacher_id; }
+if ($class_id)       { $sql .= ' AND tl.class_id = :cid';     $params['cid'] = $class_id; }
 $sql .= ' ORDER BY t.first_name, t.last_name, s.subject_code, c.class_name';
 $sql .= ' LIMIT :limit OFFSET :offset';
 $stmt = $pdo->prepare($sql); 
@@ -189,7 +194,8 @@ WHERE tl.academic_year_id = :year_id AND tl.term_no = :term_no
 SQL;
 $params2 = ['year_id'=>$year_id, 'term_no'=>$term_no];
 if ($group !== null) { $sqlSum .= ' AND t.subject_group = :grp'; $params2['grp'] = $group; }
-if ($teacher_id)    { $sqlSum .= ' AND t.id = :tid'; $params2['tid'] = $teacher_id; }
+if ($teacher_id)     { $sqlSum .= ' AND t.id = :tid';            $params2['tid'] = $teacher_id; }
+if ($class_id)       { $sqlSum .= ' AND tl.class_id = :cid';     $params2['cid'] = $class_id; }
 $sqlSum .= ' GROUP BY t.id, t.first_name, t.last_name, t.subject_group ORDER BY t.first_name, t.last_name';
 $stmt2 = $pdo->prepare($sqlSum); $stmt2->execute($params2);
 $summary = $stmt2->fetchAll();
@@ -226,7 +232,7 @@ $summary = $stmt2->fetchAll();
   <?php endif; ?>
 
   <!-- Filter -->
-  <form id="filterForm" class="bg-white rounded-2xl shadow p-4 mb-6 grid grid-cols-1 md:grid-cols-5 gap-3" method="get">
+  <form id="filterForm" class="bg-white rounded-2xl shadow p-4 mb-6 grid grid-cols-1 md:grid-cols-6 gap-3" method="get">
     <input type="hidden" name="page" value="1">
     <div>
       <label class="block text-xs mb-1">ปีการศึกษา</label>
@@ -263,6 +269,15 @@ $summary = $stmt2->fetchAll();
           <option value="<?= (int)$t['id']; ?>" <?= ($teacher_id && (int)$teacher_id===(int)$t['id'])?'selected':''; ?>>
             <?= htmlspecialchars($t['first_name'].' '.$t['last_name']); ?>
           </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs mb-1">ชั้น/ห้อง</label>
+      <select name="class_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
+        <option value="">ทั้งหมด</option>
+        <?php foreach ($classes as $c): ?>
+          <option value="<?= (int)$c['id']; ?>" <?= ($class_id !== null && (int)$class_id === (int)$c['id']) ? 'selected' : ''; ?>><?= htmlspecialchars($c['class_name']); ?></option>
         <?php endforeach; ?>
       </select>
     </div>

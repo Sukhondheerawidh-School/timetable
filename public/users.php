@@ -50,6 +50,7 @@ $flash = flash_get();
             <td class="px-4 py-3">
               <?php
               $roleColors = [
+                'superuser' => 'bg-violet-100 text-violet-700',
                 'admin' => 'bg-purple-100 text-purple-700',
                 'user' => 'bg-slate-100 text-slate-700'
               ];

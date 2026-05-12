@@ -58,7 +58,7 @@ $selectedTermNo = tt_validate_term_no($pdo, $selectedYearId, $selectedTermNo);
 $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
   if (!verify_csrf($_POST['csrf'] ?? '')) $err='CSRF ไม่ถูกต้อง';
   else {
-    // ── AJAX conflict-check only (ไม่ write DB) ──────────────────────
+    // ── AJAX conflict-check only (read-only, ข้ามการตรวจ canEdit) ──────
     if (($_POST['check_only'] ?? '') === '1') {
       header('Content-Type: application/json; charset=utf-8');
       $ck_year   = (int)($_POST['academic_year_id'] ?? 0);
@@ -97,6 +97,10 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
       echo json_encode(['ok' => empty($conflicts), 'conflicts' => $conflicts]);
       exit;
     }
+    // ── ตรวจสอบสิทธิ์แก้ไข (write path) ────────────────────────────
+    if (!canEditSection('activities')) {
+      $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
+    } else {
     // ─────────────────────────────────────────────────────────────────
     $year_id  = (int)($_POST['academic_year_id'] ?? 0);
     $term_no  = (int)($_POST['term_no'] ?? 1);
@@ -225,6 +229,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
         else $err=$e->getMessage();
       }
     }
+    } // close canEdit else
   }
 }
 ?>
@@ -285,6 +290,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">วัน</label>
         <select name="day_of_week" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
+          <option value="">— เลือกวัน —</option>
           <?php foreach (th_dow_opts() as $k=>$v): ?>
             <option value="<?= (int)$k; ?>" <?= (isset($_POST['day_of_week']) && (int)$_POST['day_of_week']===$k)?'selected':''; ?>><?= $v; ?></option>
           <?php endforeach; ?>
@@ -293,6 +299,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
       <div id="period-field">
         <label class="block text-sm font-medium text-slate-700 mb-1.5">คาบ <span class="text-red-500">*</span></label>
         <select name="period_no" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
+          <option value="">— เลือกคาบ —</option>
           <?php foreach($periods as $p): ?>
             <option value="<?= (int)$p['period_no']; ?>" <?= (isset($_POST['period_no']) && (int)$_POST['period_no']===(int)$p['period_no'])?'selected':''; ?>>
               คาบ <?= (int)$p['period_no']; ?> (<?= substr($p['start_time'],0,5); ?>–<?= substr($p['end_time'],0,5); ?>)

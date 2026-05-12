@@ -13,6 +13,10 @@ if (!verify_csrf($_POST['csrf'] ?? '')) {
   flash_set('error', 'CSRF token ไม่ถูกต้อง');
   redirect('loads.php');
 }
+if (!canEditSection('loads')) {
+  flash_set('error', '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser');
+  redirect('loads.php');
+}
 
 $id = (int)($_POST['id'] ?? 0);
 // ✅ รับค่าฟิลเตอร์ทั้งหมด

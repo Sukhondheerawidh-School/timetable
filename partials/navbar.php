@@ -12,7 +12,16 @@ function group_open(array $files, $current) {
 }
 
 $user = currentUser();
-$isAdmin = ($user['role'] ?? '') === 'admin';
+$isAdmin      = in_array($user['role'] ?? '', ['admin', 'superuser'], true);
+$isSuperuser  = ($user['role'] ?? '') === 'superuser';
+$editingLocked = isEditingLocked();
+
+// ตรวจ section locks สำหรับ banner
+$lockedSectionLabels = [];
+foreach (['timetable' => 'ตารางสอน', 'loads' => 'กำลังสอน', 'activities' => 'กิจกรรม', 'duty' => 'จัดเวร'] as $sk => $sl) {
+    if (isSectionLocked('lock_' . $sk)) $lockedSectionLabels[] = $sl;
+}
+$anyLocked = $editingLocked || !empty($lockedSectionLabels);
 
 $settingsFiles = ['teachers.php','subject_groups.php','years.php','periods.php','subjects.php','rooms.php','classes.php','class_weekends.php'];
 $systemFiles   = ['activity_logs.php','backup.php'];
@@ -20,6 +29,7 @@ $planFiles     = ['activities.php','loads.php','teacher_constraints.php'];
 $dutyFiles     = ['duty_assign.php','duty_summary.php','duty_exclusions.php','duty_summary_report.php','duty_slots.php','duty_posts.php','duty_shifts.php','buildings.php','teacher_buildings.php','shift.php'];
 $timetableFiles= ['co_teaching.php','timetable.php'];
 $reportFiles   = ['report.php'];
+$superFiles    = ['superuser_settings.php'];
 
 $openSettings  = $isAdmin && group_open($settingsFiles, $path);
 $openSystem    = $isAdmin && group_open($systemFiles, $path);
@@ -27,6 +37,7 @@ $openPlan      = group_open($planFiles, $path);
 $openTimetable = group_open($timetableFiles, $path);
 $openDuty      = $isAdmin && group_open($dutyFiles, $path);
 $openReport    = group_open($reportFiles, $path);
+$openSuper     = $isSuperuser && group_open($superFiles, $path);
 ?>
 
 <style>
@@ -77,6 +88,28 @@ $openReport    = group_open($reportFiles, $path);
     </div>
 
     <div class="px-3 py-3 space-y-2 overflow-y-auto flex-1">
+
+      <?php if ($anyLocked): ?>
+      <div class="mx-1 mb-1 px-3 py-2 rounded-xl bg-rose-50 border border-rose-300 flex items-center gap-2">
+        <span class="text-base">🔒</span>
+        <div>
+          <div class="text-xs font-bold text-rose-700">ปิดการแก้ไข</div>
+          <?php if ($editingLocked): ?>
+          <div class="text-[10px] text-rose-500">ทุกส่วน (Global)</div>
+          <?php else: ?>
+          <div class="text-[10px] text-rose-500"><?= implode(' · ', array_map('htmlspecialchars', $lockedSectionLabels)) ?></div>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($isSuperuser): ?>
+      <a href="<?= url('superuser_settings.php'); ?>" class="flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('superuser_settings.php', $path); ?> bg-violet-50 border border-violet-200 hover:bg-violet-100">
+        <span class="text-lg">🛡️</span>
+        <span class="text-sm font-semibold text-violet-700">Superuser Settings</span>
+      </a>
+      <?php endif; ?>
+
       <details class="tt-nav rounded-xl" open>
         <summary class="flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer select-none hover:bg-slate-50">
           <span class="tt-nav-title">ทั่วไป</span>

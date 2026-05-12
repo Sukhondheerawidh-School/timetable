@@ -95,6 +95,43 @@ if (!$loads) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// 3b. Co-teaching pairs → หา secondary load IDs และ override periods
+//     สำหรับ primary load ใช้ MAX(periods_per_week) ของทั้งกลุ่ม
+//     เพื่อป้องกัน under-count เมื่อ primary มี periods น้อยกว่า secondary
+// ─────────────────────────────────────────────────────────────────
+$coStmt = $pdo->prepare("
+    SELECT
+        CASE WHEN cp.main_load_id < cp.co_load_id THEN cp.main_load_id ELSE cp.co_load_id END AS primary_id,
+        CASE WHEN cp.main_load_id < cp.co_load_id THEN cp.co_load_id ELSE cp.main_load_id END AS secondary_id,
+        GREATEST(lm.periods_per_week, lc.periods_per_week) AS max_periods
+    FROM co_teaching_pairs cp
+    INNER JOIN teaching_loads lm ON lm.id = cp.main_load_id
+        AND lm.academic_year_id = ? AND lm.term_no = ?
+    INNER JOIN teaching_loads lc ON lc.id = cp.co_load_id
+        AND lc.academic_year_id = ? AND lc.term_no = ?
+        AND lc.class_id   = lm.class_id
+        AND lc.subject_id = lm.subject_id
+    WHERE cp.year_id = ? AND cp.term_no = ?
+      AND cp.main_load_id < cp.co_load_id
+");
+$coStmt->execute([$year_id, $term_no, $year_id, $term_no, $year_id, $term_no]);
+
+$coSecondaryLoadIds  = [];   // load_id => true  (skip ใน classDemand)
+$coPrimaryOverride   = [];   // primary_load_id => max_periods (override ใน classDemand)
+
+foreach ($coStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $pid  = (int)$row['primary_id'];
+    $sid  = (int)$row['secondary_id'];
+    $maxP = (int)$row['max_periods'];
+
+    $coSecondaryLoadIds[$sid] = true;
+    // เก็บ max จากทุก pair ที่ primary นี้เกี่ยวข้อง (กรณี 3+ ครู)
+    if (!isset($coPrimaryOverride[$pid]) || $coPrimaryOverride[$pid] < $maxP) {
+        $coPrimaryOverride[$pid] = $maxP;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // 4. Teacher constraints → คาบที่ครูไม่ว่าง
 //    ตรวจจาก 5 วัน (จันทร์-ศุกร์) เพราะครูไม่สอนเสาร์-อาทิตย์
 // ─────────────────────────────────────────────────────────────────
@@ -195,6 +232,7 @@ $classDemand   = [];   // cid => sum periods_per_week (teaching only)
 foreach ($loads as $L) {
     $tid = (int)$L['teacher_id'];
     $cid = (int)$L['class_id'];
+    $lid = (int)$L['id'];
     $pw  = (int)$L['periods_per_week'];
 
     $teacherDemand[$tid] = ($teacherDemand[$tid] ?? 0) + $pw;
@@ -206,7 +244,12 @@ foreach ($loads as $L) {
         $roomName[$rid]   = $L['room_name'] ?? "ห้อง #$rid";
     }
 
-    $classDemand[$cid] = ($classDemand[$cid] ?? 0) + $pw;
+    // co-teaching secondary load → ไม่นับซ้ำในคลาสดีมานด์
+    // co-teaching primary load → ใช้ MAX periods ของกลุ่ม (ป้องกัน under-count)
+    if (!isset($coSecondaryLoadIds[$lid])) {
+        $effectivePw = isset($coPrimaryOverride[$lid]) ? $coPrimaryOverride[$lid] : $pw;
+        $classDemand[$cid] = ($classDemand[$cid] ?? 0) + $effectivePw;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────

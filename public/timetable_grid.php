@@ -10,6 +10,8 @@ require_once __DIR__ . '/../app/db.php';
 
 requireLogin();
 
+$canEdit = canEditSection('timetable'); // superuser หรือเมื่อระบบไม่ได้ล็อก
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
     exit(json_encode(['error' => 'Method Not Allowed']));
@@ -283,13 +285,16 @@ $remainRows = [];
 if ($view === 'class' && $class_id) {
     $st = $pdo->prepare("
         SELECT tl.id AS load_id, tl.periods_per_week, s.subject_code, s.subject_name,
+               CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
                (SELECT COUNT(DISTINCT ts.id)
                 FROM timetable_slots ts
                 JOIN timetable_slot_teachers stt ON stt.slot_id=ts.id AND stt.teacher_id=tl.teacher_id
                 WHERE ts.academic_year_id=tl.academic_year_id AND ts.term_no=tl.term_no AND ts.class_id=tl.class_id
                   AND ts.subject_name=CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END
                ) AS used_count
-        FROM teaching_loads tl JOIN subjects s ON s.id=tl.subject_id
+        FROM teaching_loads tl
+        JOIN subjects s ON s.id=tl.subject_id
+        JOIN teachers t ON t.id=tl.teacher_id
         WHERE tl.academic_year_id=? AND tl.term_no=? AND tl.class_id=?
         ORDER BY s.subject_name, tl.id
     ");
@@ -310,6 +315,28 @@ if ($view === 'class' && $class_id) {
     ");
     $st->execute([$teacher_id, $year_id, $term_no, $teacher_id]);
     $remainRows = $st->fetchAll();
+}
+
+/* =========================
+   Co-teaching detection for remain rows
+========================= */
+$coLoadIds = [];
+if ($remainRows) {
+    $loadIdList = array_map(fn($r) => (int)$r['load_id'], $remainRows);
+    if ($loadIdList) {
+        $inList = implode(',', $loadIdList);
+        $stCo = $pdo->prepare("
+            SELECT DISTINCT main_load_id, co_load_id
+            FROM co_teaching_pairs
+            WHERE year_id=? AND term_no=?
+              AND (main_load_id IN ($inList) OR co_load_id IN ($inList))
+        ");
+        $stCo->execute([$year_id, $term_no]);
+        foreach ($stCo->fetchAll() as $cpRow) {
+            $coLoadIds[(int)$cpRow['main_load_id']] = true;
+            $coLoadIds[(int)$cpRow['co_load_id']]   = true;
+        }
+    }
 }
 
 /* =========================
@@ -466,18 +493,21 @@ ob_start();
                           <span class="source-badge">
                             <?= $it['source']==='auto' ? '🤖 AUTO' : '✏️ MANUAL' ?>
                           </span>
+                          <?php if ($canEdit): ?>
                           <form method="post" onsubmit="return ttConfirmSubmit(this,{text:'ลบคาบนี้?'});" style="display:inline;margin:0">
                             <input type="hidden" name="csrf" value="<?= csrf_token() ?>">
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="slot_id" value="<?= (int)$it['id'] ?>">
                             <button type="submit" class="delete-btn text-rose-600 hover:text-rose-700 hover:bg-rose-50">🗑️ ลบ</button>
                           </form>
+                          <?php endif; ?>
                         </div>
                       </div>
                   <?php
                   }
               } else {
               ?>
+                <?php if ($canEdit): ?>
                 <details data-max-period="<?= $maxPeriod ?>" data-period="<?= $pp ?>">
                   <summary>➕ เพิ่ม</summary>
                   <form method="post" class="add-form mt-2 space-y-1">
@@ -507,6 +537,9 @@ ob_start();
                     </div>
                   </form>
                 </details>
+                <?php else: ?>
+                <div class="text-[10px] text-slate-400 text-center py-2">—</div>
+                <?php endif; ?>
               <?php } ?>
             </div>
           </td>
@@ -548,12 +581,23 @@ ob_start();
             $used  = (int)$r['used_count'];
             $ppw   = (int)$r['periods_per_week'];
             $left  = max(0, $ppw - $used);
+            $isCo  = isset($coLoadIds[(int)$r['load_id']]);
           ?>
             <tr class="border-t hover:bg-slate-50">
               <?php if ($view === 'teacher'): ?>
                 <td class="px-3 py-2"><?= htmlspecialchars((string)($r['class_name'] ?? '')) ?></td>
               <?php endif; ?>
-              <td class="px-3 py-2 font-medium"><?= htmlspecialchars($label) ?></td>
+              <td class="px-3 py-2">
+                <div class="font-medium flex items-center gap-1 flex-wrap">
+                  <?= htmlspecialchars($label) ?>
+                  <?php if ($isCo): ?>
+                    <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 border border-violet-300">🤝 สอนคู่</span>
+                  <?php endif; ?>
+                </div>
+                <?php if ($view === 'class' && !empty($r['teacher_name'])): ?>
+                  <div class="text-xs text-slate-500 mt-0.5">👤 <?= htmlspecialchars($r['teacher_name']) ?></div>
+                <?php endif; ?>
+              </td>
               <td class="px-3 py-2 text-center"><?= $used ?></td>
               <td class="px-3 py-2 text-center"><?= $ppw ?></td>
               <td class="px-3 py-2">

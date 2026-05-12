@@ -232,6 +232,7 @@ $show_room     = $applied ? isset($_GET['show_room'])     : true;
 $show_teacher  = $applied ? isset($_GET['show_teacher'])  : true;
 $show_room_code = $applied ? isset($_GET['show_room_code']) : false;
 $show_approval = $applied ? isset($_GET['show_approval']) : true;
+$show_duty     = $applied ? isset($_GET['show_duty'])     : false;
 
 /* ✅ เพิ่มตัวแปร export */
 $export = $_GET['export'] ?? '';
@@ -697,6 +698,36 @@ function gridByRoom(PDO $pdo,$year_id,$term_no,$room_id){
 }
 
 /* --------------------------
+   ดึงเวรครู (teacher view)
+---------------------------*/
+function getTeacherDuty(PDO $pdo, int $year_id, int $term_no, int $teacher_id): array {
+  try {
+    $sql = "SELECT ms.day_of_week, mts.period_no, mp.post_name
+            FROM duty_term_assignments ta
+            JOIN duty_master_shifts ms ON ms.id=ta.duty_master_shift_id
+            JOIN duty_master_time_slots mts ON mts.id=ms.duty_time_slot_id
+            JOIN duty_master_posts mp ON mp.id=ms.duty_post_id
+            WHERE ta.academic_year_id=? AND ta.term_no=? AND ta.teacher_id=?
+              AND NOT EXISTS (
+                SELECT 1 FROM duty_term_exclusions e
+                WHERE e.academic_year_id=ta.academic_year_id AND e.term_no=ta.term_no AND e.teacher_id=ta.teacher_id
+              )
+            ORDER BY ms.day_of_week, mts.sort_order";
+    $st = $pdo->prepare($sql);
+    $st->execute([$year_id, $term_no, $teacher_id]);
+    $duties = [];
+    while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+      $day = (int)$r['day_of_week'];
+      $pno = $r['period_no'] === null ? null : (int)$r['period_no'];
+      $duties[$day][] = ['period_no'=>$pno, 'post_name'=>$r['post_name']];
+    }
+    return $duties;
+  } catch (Throwable $e) {
+    return [];
+  }
+}
+
+/* --------------------------
    ตรวจหาคาบติดกัน
 ---------------------------*/
 function detectConsecutiveSlots($grid, $periods, $weekdays) {
@@ -875,12 +906,14 @@ if ($view==='class'){
     $weekdays = getTeacherWeekdays($pdo, $year_id, $term_no, $t['id']);
     $grid = gridByTeacher($pdo,$year_id,$term_no,$t['id']);
     $merged = detectConsecutiveSlots($grid, $periods, $weekdays);
+    $teacherDuty = ($show_duty && $applied) ? getTeacherDuty($pdo,(int)$year_id,(int)$term_no,(int)$t['id']) : [];
     $pages[]=[
       'mode'=>'teacher',
       'title'=>'ตารางสอนครู '.$t['first_name'].' '.$t['last_name'],
       'subtitle'=>'กลุ่มสาระ: '.$gname,
       'grid'=>$merged,
-      'weekdays'=>$weekdays
+      'weekdays'=>$weekdays,
+      'duty'=>$teacherDuty,
     ];
   }
 
@@ -1023,6 +1056,13 @@ body{font-family:"Sarabun",system-ui,sans-serif}
 .period-no{font-weight:700;line-height:1.1}
 .period-time{font-size:11px;color:#475569;line-height:1.1;margin-top:2px}
 
+/* Duty columns (teacher view) */
+.table col.duty-col{width:62px}
+.duty-head{background:#f1f5f9;color:#374151;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;white-space:normal;line-height:1.3;padding:4px 2px}
+.duty-cell{text-align:center;vertical-align:middle;padding:4px 3px}
+.duty-cell-empty{text-align:center;vertical-align:middle;color:#94a3b8;font-size:11px}
+.duty-tag{display:block;font-size:10px;line-height:1.4;white-space:normal;word-break:break-all;margin-bottom:1px}
+.duty-tag:last-child{margin-bottom:0}
 /* Two-table layout (header table + body table) */
 .table-head{margin-bottom:0}
 .table-body{margin-top:0}
@@ -1069,6 +1109,10 @@ body{font-family:"Sarabun",system-ui,sans-serif}
   .table.rows-7 .line{line-height:1.12!important;margin:0.5px 0!important}
   .table.rows-7 .slot,.table.rows-7 .slot.empty{min-height:48px;height:48px}
   .table.rows-6 .slot,.table.rows-6 .slot.empty{min-height:58px;height:58px}
+  .duty-head{background:#e5e7eb!important;color:#000!important}
+  .duty-cell{background:#f9fafb!important}
+  .duty-cell-empty{background:#fff!important}
+  .duty-tag{background:none!important;color:#000!important}
 }
 ';
 
@@ -1081,7 +1125,8 @@ function buildReportHTML(
   $show_subject,$show_code,$show_room,$show_teacher,
   $for_pdf=false,
   $year_text='',$term_text='',$show_room_code=false,$roomCodeById=[],
-  $director_name='',$director_date='',$directorSignVers='',$hasDirectorSign=false,$show_approval=true
+  $director_name='',$director_date='',$directorSignVers='',$hasDirectorSign=false,$show_approval=true,
+  $show_duty=false
 ){
   ob_start();
   if (!$for_pdf): ?>
@@ -1102,7 +1147,21 @@ function buildReportHTML(
     // ✅ cols-* ต้องอิงจำนวนคาบ (จำนวนคอลัมน์ของตาราง) ไม่ใช่จำนวนวัน
     $col_class = 'cols-' . $period_count;
     $row_class = 'rows-' . $day_count;
-    
+
+    // ── ข้อมูลเวร (เฉพาะ teacher view ที่ติ๊ก show_duty) ─────────────────
+    $pgDuty      = ($show_duty && ($pg['mode'] ?? '') === 'teacher') ? ($pg['duty'] ?? []) : [];
+    $maxPeriodNo = !empty($periods) ? (int)max(array_column($periods, 'period_no')) : 9;
+    $hasDutyBefore = false;
+    $hasDutyAfter  = false;
+    foreach ($pgDuty as $dayDuties) {
+      foreach ($dayDuties as $d) {
+        $dpno = $d['period_no'];
+        if ($dpno === 0) $hasDutyBefore = true;
+        elseif ($dpno === null || (int)$dpno >= $maxPeriodNo) $hasDutyAfter = true;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // สร้าง array ชื่อวัน
     $day_names = [
       1 => 'จันทร์', 2 => 'อังคาร', 3 => 'พุธ', 
@@ -1139,11 +1198,14 @@ function buildReportHTML(
           <table class="table table-head <?= $col_class ?> <?= $row_class ?>">
             <colgroup>
               <col class="first-col">
+              <?php if ($hasDutyBefore): ?><col class="duty-col"><?php endif; ?>
               <?php foreach($periods as $_p): ?><col class="period-col"><?php endforeach; ?>
+              <?php if ($hasDutyAfter): ?><col class="duty-col"><?php endif; ?>
             </colgroup>
             <thead>
               <tr>
                 <th style="width:92px">วันเวลา</th>
+                <?php if ($hasDutyBefore): ?><th class="duty-head">เวรเช้า</th><?php endif; ?>
                 <?php foreach($periods as $p): ?>
                   <th>
                     <div class="period-head">
@@ -1152,6 +1214,7 @@ function buildReportHTML(
                     </div>
                   </th>
                 <?php endforeach; ?>
+                <?php if ($hasDutyAfter): ?><th class="duty-head">เวรเย็น</th><?php endif; ?>
               </tr>
             </thead>
           </table>
@@ -1161,20 +1224,49 @@ function buildReportHTML(
           <table class="table table-body <?= $col_class ?> <?= $row_class ?>">
             <colgroup>
               <col class="first-col">
+              <?php if ($hasDutyBefore): ?><col class="duty-col"><?php endif; ?>
               <?php foreach($periods as $_p): ?><col class="period-col"><?php endforeach; ?>
+              <?php if ($hasDutyAfter): ?><col class="duty-col"><?php endif; ?>
             </colgroup>
             <tbody>
-              <?php foreach($weekdays as $dno): ?>
+              <?php foreach($weekdays as $dno):
+                // ── จำแนกเวรของวันนี้ ───────────────────────────────────
+                $dayDuties   = $pgDuty[$dno] ?? [];
+                $beforePosts = []; $afterPosts = []; $inGridDuty = [];
+                foreach ($dayDuties as $d) {
+                  $dpno = $d['period_no'];
+                  if ($dpno === 0) $beforePosts[] = $d['post_name'];
+                  elseif ($dpno === null || (int)$dpno > $maxPeriodNo) $afterPosts[] = $d['post_name'];
+                  elseif ((int)$dpno === $maxPeriodNo) {
+                    $inGridDuty[(int)$dpno] = $d['post_name']; // แสดงในคาบสุดท้าย (ถ้าคาบว่าง)
+                    $afterPosts[] = $d['post_name'];            // แสดงในคอลัมน์เวรเย็นด้วย
+                  } else $inGridDuty[(int)$dpno] = $d['post_name'];
+                }
+                // ────────────────────────────────────────────────────────
+              ?>
                 <tr>
                   <th style="background:#f1f5f9;text-align:center;color:#0f172a;font-weight:700"><?= h($day_names[$dno] ?? '') ?></th>
+                  <?php if ($hasDutyBefore): ?>
+                    <td class="<?= $beforePosts ? 'duty-cell' : 'duty-cell-empty' ?>"><?php
+                      if ($beforePosts) { foreach ($beforePosts as $bp) echo '<span class="duty-tag">เวร'.h($bp).'</span>'; }
+                      else echo '—';
+                    ?></td>
+                  <?php endif; ?>
                   <?php foreach($periods as $p):
                     $pno = (int)$p['period_no'];
                     $item = $pg['grid'][$dno][$pno] ?? null;
-                    
+
                     if ($item && isset($item['skip']) && $item['skip']) {
                       continue;
                     }
-                    
+
+                    // ── เวรในคาบ: แสดงเฉพาะเมื่อช่องว่าง ───────────────
+                    if (!$item && isset($inGridDuty[$pno])) {
+                      echo '<td><div class="slot"><div><span class="duty-tag">เวร'.h($inGridDuty[$pno]).'</span></div></div></td>';
+                      continue;
+                    }
+                    // ────────────────────────────────────────────────────
+
                     $colspan = isset($item['colspan']) ? (int)$item['colspan'] : 1;
                     $cellHtml = renderCell($item, $subjectCodeByName, [
                       'show_subject'=>$show_subject,
@@ -1183,11 +1275,17 @@ function buildReportHTML(
                       'show_teacher'=>$show_teacher,
                       'show_room_code'=>$show_room_code,
                     ], $roomCodeById);
-                    
+
                     if ($cellHtml !== null) {
                       echo '<td' . ($colspan > 1 ? ' colspan="'.$colspan.'"' : '') . '>' . $cellHtml . '</td>';
                     }
                   endforeach; ?>
+                  <?php if ($hasDutyAfter): ?>
+                    <td class="<?= $afterPosts ? 'duty-cell' : 'duty-cell-empty' ?>"><?php
+                      if ($afterPosts) { foreach ($afterPosts as $ap) echo '<span class="duty-tag">เวร'.h($ap).'</span>'; }
+                      else echo '—';
+                    ?></td>
+                  <?php endif; ?>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -1236,7 +1334,8 @@ $reportHtml = buildReportHTML(
   $school_name,$printed_at,$logoVers,$hasLogo,
   $show_subject,$show_code,$show_room,$show_teacher,false,
   $year_text,$term_text,$show_room_code,$roomCodeById,
-  $director_name,$director_date,$directorSignVers,$hasDirectorSign,$show_approval
+  $director_name,$director_date,$directorSignVers,$hasDirectorSign,$show_approval,
+  $show_duty
 );
 
 /* --------------------------
@@ -1772,6 +1871,12 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
                 แสดงเฉพาะครูที่มีตารางสอน
               </label>
             </div>
+            <div class="col-span-2 md:col-span-4">
+              <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" name="show_duty" value="1" <?= $show_duty?'checked':''; ?> class="rounded accent-violet-600">
+                🧑‍🏫 แสดงเวรครู (เวรเช้า / ในคาบ / เวรเย็น)
+              </label>
+            </div>
 
           <?php elseif($view==='room'): ?>
             <div>
@@ -1791,46 +1896,6 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
               </label>
             </div>
           <?php endif; ?>
-        </div>
-      </div>
-
-      <hr class="border-slate-100">
-
-      <!-- Section 2: ตั้งค่าหัวกระดาษ -->
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🏫 ข้อมูลหัวกระดาษ</p>
-          <button type="submit" name="__save_header" value="1"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
-            title="บันทึกข้อมูลหัวกระดาษโดยไม่ต้องแสดงตัวอย่าง">
-            💾 บันทึก
-          </button>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อโรงเรียน</label>
-            <input type="text" name="school_name" id="f_school" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($school_name) ?>">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">ปีการศึกษา (มุมซ้าย)</label>
-            <input type="text" name="year_text" id="f_year_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ปีการศึกษา 2568" value="<?= h($year_text) ?>">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">ภาคเรียน (มุมซ้าย)</label>
-            <input type="text" name="term_text" id="f_term_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ภาคเรียนที่ 1" value="<?= h($term_text) ?>">
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อผู้อำนวยการ (ช่องอนุมัติ)</label>
-            <input type="text" name="director_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ชื่อ-สกุล" value="<?= h($director_name) ?>">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">วันที่อนุมัติ</label>
-            <input type="text" name="director_date" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="....../....../......" value="<?= h($director_date) ?>">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">พิมพ์ ณ วันที่</label>
-            <input type="date" name="printed_at" id="f_printed" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($printed_at) ?>">
-          </div>
         </div>
       </div>
 
@@ -1880,6 +1945,46 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           class="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">
           ↺ ล้างค่า
         </a>
+      </div>
+
+      <hr class="border-slate-100">
+
+      <!-- Section 2: ตั้งค่าหัวกระดาษ -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🏫 ข้อมูลหัวกระดาษ</p>
+          <button type="submit" name="__save_header" value="1"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+            title="บันทึกข้อมูลหัวกระดาษโดยไม่ต้องแสดงตัวอย่าง">
+            💾 บันทึก
+          </button>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อโรงเรียน</label>
+            <input type="text" name="school_name" id="f_school" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($school_name) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">ปีการศึกษา (มุมซ้าย)</label>
+            <input type="text" name="year_text" id="f_year_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ปีการศึกษา 2568" value="<?= h($year_text) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">ภาคเรียน (มุมซ้าย)</label>
+            <input type="text" name="term_text" id="f_term_text" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ภาคเรียนที่ 1" value="<?= h($term_text) ?>">
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อผู้อำนวยการ (ช่องอนุมัติ)</label>
+            <input type="text" name="director_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="ชื่อ-สกุล" value="<?= h($director_name) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">วันที่อนุมัติ</label>
+            <input type="text" name="director_date" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" placeholder="....../....../......" value="<?= h($director_date) ?>">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">พิมพ์ ณ วันที่</label>
+            <input type="date" name="printed_at" id="f_printed" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition" value="<?= h($printed_at) ?>">
+          </div>
+        </div>
       </div>
     </form>
   </div>

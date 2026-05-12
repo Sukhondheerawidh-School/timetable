@@ -41,6 +41,8 @@ $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
+  } elseif (!canEditSection('duty')) {
+    $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
   } else {
     $year_id = (int)($_POST['year_id'] ?? $year_id);
     $term_no = tt_validate_term_no($pdo, $year_id, (int)($_POST['term_no'] ?? $term_no));
@@ -112,9 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $busyTeach->execute([$teacher_id, $year_id, $term_no, $day, $periodNo, $teacher_id]);
           if ($busyTeach->fetchColumn()) throw new Exception('ครูคนนี้มีสอนช่วงเวลานี้');
 
-          $busyCons = $pdo->prepare('SELECT 1 FROM teacher_constraints WHERE teacher_id=? AND academic_year_id=? AND term_no=? AND day_of_week=? AND period_no=? LIMIT 1');
-          $busyCons->execute([$teacher_id, $year_id, $term_no, $day, $periodNo]);
-          if ($busyCons->fetchColumn()) throw new Exception('ครูคนนี้ติดข้อจำกัดช่วงเวลานี้');
+          // teacher_constraints blocks teaching only, not duty assignments
         }
 
         $ins = $pdo->prepare('INSERT INTO duty_term_assignments(academic_year_id, term_no, duty_master_shift_id, teacher_id) VALUES (?,?,?,?)');
@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $slotsStmt = $pdo->prepare('SELECT id, slot_label, period_no, start_time, end_time, sort_order
   FROM duty_master_time_slots
   WHERE is_active=1
-  ORDER BY sort_order');
+  ORDER BY CASE WHEN period_no IS NULL THEN 9999 ELSE period_no END, start_time, sort_order');
 $slotsStmt->execute();
 $slots = $slotsStmt->fetchAll();
 
@@ -194,7 +194,7 @@ if ($building_id > 0) {
   $shiftsSql .= ' AND dp.building_id = ?';
   $shiftsParams[] = $building_id;
 }
-$shiftsSql .= ' ORDER BY ms.day_of_week, dts.sort_order, dp.post_name';
+$shiftsSql .= ' ORDER BY ms.day_of_week, CASE WHEN dts.period_no IS NULL THEN 9999 ELSE dts.period_no END, dts.start_time, dts.sort_order, dp.post_name';
 $shiftsStmt = $pdo->prepare($shiftsSql);
 $shiftsStmt->execute($shiftsParams);
 $shifts = $shiftsStmt->fetchAll();
@@ -374,7 +374,6 @@ foreach ($shifts as $sh) {
     if (!empty($dutyBusy[$pDay][$slotId][$tid])) continue;
     if ($pPno !== null) {
       if (!empty($busyTeach[$pDay][$pPno][$tid])) continue;
-      if (!empty($busyCons[$pDay][$pPno][$tid])) continue;
     }
     $available[] = $t;
   }
@@ -615,7 +614,6 @@ include __DIR__ . '/../partials/navbar.php';
                             if (!empty($dutyBusy[$day][$slotId][$tid])) continue;
                             if ($pno !== null) {
                               if (!empty($busyTeach[$day][$pno][$tid])) continue;
-                              if (!empty($busyCons[$day][$pno][$tid])) continue;
                             }
                             $available[] = $t;
                           }
@@ -812,7 +810,6 @@ include __DIR__ . '/../partials/navbar.php';
                           if (!empty($dutyBusy[$day][$slotId][$tid])) continue;
                           if ($pno !== null) {
                             if (!empty($busyTeach[$day][$pno][$tid])) continue;
-                            if (!empty($busyCons[$day][$pno][$tid])) continue;
                           }
                           $available[] = $t;
                         }
@@ -1256,6 +1253,9 @@ include __DIR__ . '/../partials/navbar.php';
 
       var visibleSlotIds = Object.keys(shiftBySlotDay).map(Number);
       visibleSlotIds.sort(function(a,b) {
+        var pa = slotMap[a] && slotMap[a].period_no != null ? slotMap[a].period_no : 9999;
+        var pb = slotMap[b] && slotMap[b].period_no != null ? slotMap[b].period_no : 9999;
+        if (pa !== pb) return pa - pb;
         return ((slotMap[a]||{}).sort_order||0) - ((slotMap[b]||{}).sort_order||0);
       });
 

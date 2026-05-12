@@ -14,13 +14,19 @@ require_once __DIR__.'/../app/db.php';
 require_once __DIR__.'/../app/helpers.php';
 requireLogin(); 
 
-// เช็ค role - ซ่อนจาก user ธรรมดา
+// เช็ค role - ซ่อนจาก user ธรรมดา และตรวจสอบล็อก
 $currentUser = currentUser();
-$isAdmin = ($currentUser['role'] ?? '') === 'admin';
+$isAdmin = in_array($currentUser['role'] ?? '', ['admin', 'superuser'], true);
 if (!$isAdmin) {
   ob_end_clean();
   header('Content-Type: application/json; charset=utf-8');
   echo json_encode(['error' => 'คุณไม่มีสิทธิ์ใช้งานฟีเจอร์นี้']);
+  exit;
+}
+if (!canEditSection('timetable')) {
+  ob_end_clean();
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode(['error' => '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser']);
   exit;
 }
 

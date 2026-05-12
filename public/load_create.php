@@ -98,6 +98,49 @@ $err = '';
 if ($_SERVER['REQUEST_METHOD']==='POST'){
   if (!verify_csrf($_POST['csrf'] ?? '')) $err='CSRF ไม่ถูกต้อง';
   else {
+    // ── AJAX duplicate check (read-only, ข้ามการตรวจ canEdit) ─────────
+    if (($_POST['check_duplicate'] ?? '') === '1') {
+      header('Content-Type: application/json; charset=utf-8');
+      $ck_year    = (int)($_POST['academic_year_id'] ?? 0);
+      $ck_term    = (int)($_POST['term_no'] ?? 1);
+      $ck_teacher = (int)($_POST['teacher_id'] ?? 0);
+      $ck_subject = (int)($_POST['subject_id'] ?? 0);
+      $ck_periods = (int)($_POST['periods_per_week'] ?? 0);
+      $ck_cids    = array_filter(array_map('intval', (array)($_POST['class_ids'] ?? [])));
+      $duplicates = [];
+      if ($ck_year && $ck_term && $ck_teacher && $ck_subject && $ck_periods && $ck_cids) {
+        $ph = implode(',', array_fill(0, count($ck_cids), '?'));
+        $stDup = $pdo->prepare("
+          SELECT tl.id, c.class_name, s.subject_name, s.subject_code,
+                 CONCAT(t.first_name,' ',t.last_name) AS teacher_name,
+                 tl.periods_per_week
+          FROM teaching_loads tl
+          JOIN teachers t  ON t.id  = tl.teacher_id
+          JOIN subjects s  ON s.id  = tl.subject_id
+          JOIN classes  c  ON c.id  = tl.class_id
+          WHERE tl.academic_year_id=? AND tl.term_no=?
+            AND tl.teacher_id=? AND tl.subject_id=?
+            AND tl.periods_per_week=?
+            AND tl.class_id IN ($ph)
+        ");
+        $stDup->execute(array_merge([$ck_year,$ck_term,$ck_teacher,$ck_subject,$ck_periods], $ck_cids));
+        foreach ($stDup->fetchAll() as $row) {
+          $duplicates[] = [
+            'class_name'   => $row['class_name'],
+            'teacher_name' => $row['teacher_name'],
+            'subject'      => ($row['subject_code'] ? $row['subject_code'].' - ' : '').$row['subject_name'],
+            'periods'      => $row['periods_per_week'],
+          ];
+        }
+      }
+      echo json_encode(['has_duplicate' => !empty($duplicates), 'duplicates' => $duplicates]);
+      exit;
+    }
+    // ── ตรวจสอบสิทธิ์แก้ไข (write path) ────────────────────────────────
+    if (!canEditSection('loads')) {
+      $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
+    } else {
+    // ────────────────────────────────────────────────────────────────────
     $year_id = (int)($_POST['academic_year_id'] ?? 0);
     $term_no = (int)($_POST['term_no'] ?? 1);
     $teacher_id = (int)($_POST['teacher_id'] ?? 0);
@@ -214,6 +257,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
         $err='ผิดพลาด: '.$e->getMessage();
       }
     }
+    } // close canEdit else
   }
 }
 ?>
@@ -252,6 +296,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">ครู (จัดกลุ่มตามกลุ่มสาระ)</label>
         <select name="teacher_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
+          <option value="">— เลือกครู —</option>
           <?php 
           $currentSubject = '';
           foreach ($teachers as $t): 
@@ -272,6 +317,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">วิชา</label>
         <select name="subject_id" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
+          <option value="">— เลือกวิชา —</option>
           <?php foreach ($subjects as $s): ?>
             <option value="<?= (int)$s['id']; ?>"><?= htmlspecialchars($s['subject_code'].' - '.$s['subject_name']); ?></option>
           <?php endforeach; ?>
@@ -369,6 +415,23 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
     </div>
   </form>
 </div>
+
+<!-- ── Duplicate Warning Modal ───────────────────────────────── -->
+<div id="dup-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-2xl">⚠️</span>
+      <h2 class="text-base font-semibold text-amber-700">พบกำลังสอนซ้ำกัน</h2>
+    </div>
+    <p class="text-sm text-slate-600 mb-3">รายการต่อไปนี้มีอยู่ในระบบแล้ว — ต้องการสร้างซ้ำอีกหรือไม่?</p>
+    <ul id="dup-list" class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-52 overflow-auto border border-amber-200 rounded-xl p-3 bg-amber-50"></ul>
+    <div class="flex justify-end gap-3">
+      <button id="dup-cancel" class="px-5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold rounded-xl transition">ยกเลิก</button>
+      <button id="dup-confirm" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition">สร้างต่อไป</button>
+    </div>
+  </div>
+</div>
+<!-- ─────────────────────────────────────────────────────────── -->
 
 <script>
   (function(){
@@ -521,6 +584,63 @@ if ($_SERVER['REQUEST_METHOD']==='POST'){
       });
     }
   })();
+
+// ── Duplicate check before submit ──────────────────────────────────
+(function () {
+  const form     = document.querySelector('form[method="post"]');
+  const modal    = document.getElementById('dup-modal');
+  const listEl2  = document.getElementById('dup-list');
+  const cancelBtn= document.getElementById('dup-cancel');
+  const confirmBtn=document.getElementById('dup-confirm');
+  if (!form || !modal) return;
+
+  let allowSubmit = false;
+
+  function closeModal() { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+  cancelBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  confirmBtn.addEventListener('click', () => {
+    closeModal();
+    allowSubmit = true;
+    form.submit();
+  });
+
+  form.addEventListener('submit', async function (e) {
+    if (allowSubmit) return;
+
+    // กำลังสอนตรวจก่อน; ถ้าชั้นยังไม่เลือกปล่อยให้ validation ปกติทำงาน
+    const classChecked = Array.from(form.querySelectorAll('input[name="class_ids[]"]:checked')).map(c => c.value);
+    const classSelected = Array.from(form.querySelectorAll('select[name="class_ids[]"] option:checked')).map(o => o.value);
+    const cids = classChecked.length ? classChecked : classSelected;
+    if (!cids.length) return; // ปล่อย validation ปกติทำงาน
+
+    e.preventDefault();
+
+    const fd = new FormData(form);
+    fd.append('check_duplicate', '1');
+
+    try {
+      const res  = await fetch(window.location.href, { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!data.has_duplicate) {
+        allowSubmit = true;
+        form.submit();
+        return;
+      }
+
+      listEl2.innerHTML = data.duplicates.map(d =>
+        `<li class="flex gap-1.5 items-start">📋 <span>ชั้น <strong>${d.class_name}</strong> — ${d.subject} — ครู ${d.teacher_name} (${d.periods} คาบ/สัปดาห์)</span></li>`
+      ).join('');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    } catch (_) {
+      allowSubmit = true;
+      form.submit();
+    }
+  });
+})();
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

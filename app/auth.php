@@ -176,11 +176,65 @@ function requireLogin() {
   }
 }
 
+function isSuperuser(): bool {
+  $u = currentUser();
+  return $u !== null && ($u['role'] ?? '') === 'superuser';
+}
+
 function requireAdmin() {
   requireLogin();
   $u = currentUser();
-  if (!$u || $u['role'] !== 'admin') {
+  // superuser มีสิทธิ์ทุกอย่างที่ admin มี
+  if (!$u || !in_array($u['role'] ?? '', ['admin', 'superuser'], true)) {
     http_response_code(403);
     die('403 Forbidden');
   }
+}
+
+function requireSuperuser() {
+  requireLogin();
+  if (!isSuperuser()) {
+    http_response_code(403);
+    die('403 Forbidden — เฉพาะ Superuser เท่านั้น');
+  }
+}
+
+/**
+ * ตรวจสอบว่า app_settings key นั้นถูกตั้งเป็น '1' หรือไม่
+ */
+function isSectionLocked(string $key): bool {
+  global $pdo;
+  if (!function_exists('tt_app_setting_get')) return false;
+  try {
+    return tt_app_setting_get($pdo, $key, '0') === '1';
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+/**
+ * ตรวจสอบว่าขณะนี้ระบบปิดการแก้ไข (global) อยู่หรือไม่
+ */
+function isEditingLocked(): bool {
+  return isSectionLocked('editing_locked');
+}
+
+/**
+ * ตรวจสอบว่าผู้ใช้สามารถแก้ไขข้อมูลใน section นั้นได้หรือไม่
+ * superuser แก้ไขได้เสมอ
+ * @param string $section 'timetable' | 'loads' | 'activities' | 'duty'
+ */
+function canEditSection(string $section): bool {
+  if (isSuperuser()) return true;
+  if (isSectionLocked('editing_locked')) return false; // global lock ยังทำงาน
+  if (isSectionLocked('lock_' . $section)) return false;
+  return true;
+}
+
+/**
+ * ตรวจสอบว่าผู้ใช้ปัจจุบันสามารถแก้ไขข้อมูลได้หรือไม่ (legacy — ใช้ global lock)
+ */
+function canEdit(): bool {
+  if (isSuperuser()) return true;
+  return !isEditingLocked();
 }

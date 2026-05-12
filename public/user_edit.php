@@ -33,8 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $err = 'กรอกชื่อและชื่อผู้ใช้';
     } elseif (!valid_username($username)) {
       $err = 'ชื่อผู้ใช้ไม่ถูกต้อง (a-z, 0-9, . _ - 3–32 ตัว)';
-    } elseif (!in_array($role, ['admin','user'], true)) {
+    } elseif (!in_array($role, ['admin','user','superuser'], true)) {
       $err = 'สิทธิ์ไม่ถูกต้อง';
+    } elseif ($role === 'superuser' && !isSuperuser()) {
+      $err = 'เฉพาะ Superuser เท่านั้นที่สามารถกำหนด role นี้ได้';
     } elseif ($newpass !== '' && (strlen($newpass) < 8 || $newpass !== $newpass2)) {
       $err = 'รหัสผ่านใหม่อย่างน้อย 8 ตัว และต้องยืนยันให้ตรงกัน';
     } else {
@@ -123,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <select name="role" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm">
           <option value="user" <?= $roleVal==='user' ? 'selected':''; ?>>user</option>
           <option value="admin" <?= $roleVal==='admin' ? 'selected':''; ?>>admin</option>
+          <option value="superuser" <?= $roleVal==='superuser' ? 'selected':''; ?>>superuser</option>
         </select>
       </div>
 

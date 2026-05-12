@@ -204,19 +204,22 @@ include __DIR__ . '/../partials/navbar.php';
   <div class="bg-white rounded-2xl shadow overflow-hidden">
     <div class="px-4 py-3 border-b font-medium">รายการช่วงเวลา</div>
     <div class="overflow-x-auto">
-      <table class="min-w-full text-sm">
+      <table class="min-w-full text-sm" id="slots-table">
         <thead class="bg-slate-50">
           <tr>
             <th class="text-left px-3 py-2">เปิดใช้เวร</th>
-            <th class="text-left px-3 py-2">ช่วงเวลา</th>
-            <th class="text-left px-3 py-2">เวลา</th>
-            <th class="text-left px-3 py-2">คาบ</th>
+            <th class="text-left px-3 py-2 cursor-pointer select-none hover:bg-slate-100 transition" data-sort="label">ช่วงเวลา <span class="sort-icon text-slate-400">⇕</span></th>
+            <th class="text-left px-3 py-2 cursor-pointer select-none hover:bg-slate-100 transition" data-sort="time">เวลา <span class="sort-icon text-slate-400">⇕</span></th>
+            <th class="text-left px-3 py-2 cursor-pointer select-none hover:bg-slate-100 transition" data-sort="period">คาบ <span class="sort-icon text-slate-400">⇕</span></th>
             <th class="text-right px-3 py-2">จัดการ</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="slots-tbody">
           <?php foreach ($slots as $s): ?>
-            <tr class="border-t align-top">
+            <tr class="border-t align-top"
+              data-label="<?= htmlspecialchars($s['slot_label']); ?>"
+              data-time="<?= htmlspecialchars(substr((string)$s['start_time'],0,5)); ?>"
+              data-period="<?= $s['period_no']===null ? '999' : sprintf('%03d',(int)$s['period_no']); ?>">
               <td class="px-3 py-2">
                 <form method="post">
                   <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
@@ -281,4 +284,37 @@ include __DIR__ . '/../partials/navbar.php';
   </div>
 </div>
 
-<?php include __DIR__ . '/../partials/footer.php'; ?>
+<script>
+(function(){
+  const tbody = document.getElementById('slots-tbody');
+  const headers = document.querySelectorAll('#slots-table thead th[data-sort]');
+  let currentSort = null;
+  let currentDir  = 1;
+
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (currentSort === key) {
+        currentDir *= -1;
+      } else {
+        currentSort = key;
+        currentDir  = 1;
+      }
+
+      // อัปเดต icons
+      document.querySelectorAll('#slots-table .sort-icon').forEach(ic => ic.textContent = '⇕');
+      th.querySelector('.sort-icon').textContent = currentDir === 1 ? '↑' : '↓';
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        const av = (a.dataset[currentSort] || '').toLowerCase();
+        const bv = (b.dataset[currentSort] || '').toLowerCase();
+        if (av < bv) return -1 * currentDir;
+        if (av > bv) return  1 * currentDir;
+        return 0;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+</script>

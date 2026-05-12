@@ -45,6 +45,10 @@ $groupLabels = teacher_group_options();
       <p class="text-sm text-slate-500 mt-1">ข้อมูลครูผู้สอนทั้งหมด</p>
     </div>
     <div class="flex gap-2">
+      <a href="<?= url('teacher_export.php'); ?>" 
+         class="px-4 py-2.5 rounded-xl border-2 border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors text-sm font-medium">
+        📥 Export CSV
+      </a>
       <a href="<?= url('teacher_template.php'); ?>" 
          class="px-4 py-2.5 rounded-xl border-2 border-slate-300 hover:bg-slate-50 transition-colors text-sm font-medium text-slate-700">
         📄 ดาวน์โหลดเทมเพลต

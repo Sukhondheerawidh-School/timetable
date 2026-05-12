@@ -8,6 +8,10 @@ requireLogin();
 if ($_SERVER['REQUEST_METHOD']!=='POST' || !verify_csrf($_POST['csrf'] ?? '')) {
   flash_set('error','คำขอไม่ถูกต้อง'); redirect('activities.php');
 }
+if (!canEditSection('activities')) {
+  flash_set('error','🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser');
+  redirect('activities.php');
+}
 $id = (int)($_POST['id'] ?? 0);
 try{
   $oldStmt = $pdo->prepare('SELECT * FROM activity_groups WHERE id=?');

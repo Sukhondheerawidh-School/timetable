@@ -168,6 +168,8 @@ $err = '';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
+  } elseif (!canEditSection('timetable')) {
+    $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
   } else {
     $action = $_POST['action'] ?? '';
     if ($action==='add') {
