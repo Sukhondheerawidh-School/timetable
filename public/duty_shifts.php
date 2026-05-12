@@ -150,6 +150,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         flash_set('success', 'บันทึกจำนวนครูแล้ว');
         redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
+      } elseif ($action === 'update_slot') {
+        $id = (int)($_POST['id'] ?? 0);
+        $slot_id = (int)($_POST['slot_id'] ?? 0);
+        if (!$id || !$slot_id) throw new Exception('ข้อมูลไม่ครบ');
+        $oldStmt = $pdo->prepare(
+          'SELECT ms.id, ms.duty_time_slot_id, dp.building_id '
+          .'FROM duty_master_shifts ms '
+          .'JOIN duty_master_posts dp ON dp.id=ms.duty_post_id '
+          .'WHERE ms.id=? LIMIT 1'
+        );
+        $oldStmt->execute([$id]);
+        $oldRow = $oldStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$oldRow) throw new Exception('ไม่พบเวร');
+        if ($building_id > 0 && (int)$oldRow['building_id'] !== $building_id) {
+          throw new Exception('เวรนี้ไม่อยู่ในอาคารที่เลือก');
+        }
+        $slotChk = $pdo->prepare('SELECT id FROM duty_master_time_slots WHERE id=? AND is_active=1 LIMIT 1');
+        $slotChk->execute([$slot_id]);
+        if (!$slotChk->fetchColumn()) throw new Exception('ไม่พบช่วงเวลา หรือช่วงเวลาไม่ได้เปิดใช้งาน');
+        $pdo->prepare('UPDATE duty_master_shifts SET duty_time_slot_id=? WHERE id=?')->execute([$slot_id, $id]);
+        logUpdate('duty_master_shifts', $id, ['duty_time_slot_id' => (int)$oldRow['duty_time_slot_id']], ['duty_time_slot_id' => $slot_id]);
+        flash_set('success', 'แก้ไขช่วงเวลาแล้ว');
+        redirect('duty_shifts.php'.($building_id>0 ? ('?building_id='.$building_id) : ''));
       } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
 
@@ -248,7 +271,8 @@ foreach ($slots as $s) {
 }
 $createDisabled = (!$hasAnySlot || !$hasAnyActiveSlot || empty($posts));
 
-$shiftsSql = 'SELECT ms.id, ms.day_of_week, ms.required_count, dts.slot_label, dts.start_time, dts.end_time,
+$shiftsSql = 'SELECT ms.id, ms.day_of_week, ms.required_count, ms.duty_time_slot_id,
+    dts.slot_label, dts.start_time, dts.end_time,
     dp.post_name, dp.building_id,
     b.building_name
   FROM duty_master_shifts ms
@@ -497,6 +521,10 @@ include __DIR__ . '/../partials/navbar.php';
                 </form>
               </td>
               <td class="px-3 py-2 text-right">
+                <button type="button"
+                  class="px-3 py-1.5 rounded-lg border hover:bg-slate-50 tt-edit-slot-btn"
+                  data-shift-id="<?= (int)$s['id']; ?>"
+                  data-current-slot="<?= (int)($s['duty_time_slot_id'] ?? 0); ?>">แก้ไขช่วงเวลา</button>
                 <form method="post" onsubmit="return ttConfirmSubmit(this, { title: 'ยืนยันการลบ', text: 'ลบเวรนี้?', confirmButtonText: 'ลบ' });" class="inline">
                   <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
                   <input type="hidden" name="action" value="delete">
@@ -510,6 +538,32 @@ include __DIR__ . '/../partials/navbar.php';
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- Modal: แก้ไขช่วงเวลา -->
+<div id="tt-slot-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+    <h3 class="font-semibold text-lg mb-4">แก้ไขช่วงเวลา</h3>
+    <form method="post" id="tt-slot-form">
+      <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+      <input type="hidden" name="action" value="update_slot">
+      <input type="hidden" name="building_id" value="<?= (int)$building_id; ?>">
+      <input type="hidden" name="id" id="tt-slot-shift-id">
+      <div class="mb-5">
+        <label class="block text-sm font-semibold mb-1 text-slate-700">ช่วงเวลา</label>
+        <select name="slot_id" id="tt-slot-select" class="w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-200" required>
+          <?php foreach ($slots as $sl): ?>
+            <?php if (!(int)$sl['is_active']) continue; ?>
+            <option value="<?= (int)$sl['id']; ?>"><?= htmlspecialchars($sl['slot_label'].' ('.substr((string)$sl['start_time'],0,5).'–'.substr((string)$sl['end_time'],0,5).')'); ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button type="button" id="tt-slot-cancel" class="px-4 py-2 rounded-xl border hover:bg-slate-50">ยกเลิก</button>
+        <button type="submit" class="px-4 py-2 rounded-xl bg-slate-900 text-white">บันทึก</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -601,6 +655,31 @@ include __DIR__ . '/../partials/navbar.php';
 
     if (searchEl) searchEl.addEventListener('input', () => { applyShiftFilter(); saveFilter(); });
     if (dayEl) dayEl.addEventListener('change', () => { applyShiftFilter(); saveFilter(); });
+
+    // Edit slot modal
+    var slotModal = document.getElementById('tt-slot-modal');
+    var slotShiftIdEl = document.getElementById('tt-slot-shift-id');
+    var slotSelect = document.getElementById('tt-slot-select');
+    var slotCancelBtn = document.getElementById('tt-slot-cancel');
+    document.querySelectorAll('.tt-edit-slot-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        slotShiftIdEl.value = this.dataset.shiftId;
+        slotSelect.value = this.dataset.currentSlot;
+        slotModal.classList.remove('hidden');
+        slotModal.classList.add('flex');
+        slotSelect.focus();
+      });
+    });
+    if (slotCancelBtn) slotCancelBtn.addEventListener('click', function() {
+      slotModal.classList.add('hidden');
+      slotModal.classList.remove('flex');
+    });
+    if (slotModal) slotModal.addEventListener('click', function(e) {
+      if (e.target === slotModal) {
+        slotModal.classList.add('hidden');
+        slotModal.classList.remove('flex');
+      }
+    });
   })();
 </script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -36,6 +36,14 @@ foreach (tt_terms_list($pdo, $year_id) as $t) {
 
 $buildingLabel = $building_id > 0 ? tt_building_label($pdo, $building_id) : '';
 
+$post_id = (int)($_GET['post_id'] ?? 0);
+$postLabel = '';
+if ($post_id > 0) {
+  $pl = $pdo->prepare('SELECT post_name FROM duty_master_posts WHERE id=? LIMIT 1');
+  $pl->execute([$post_id]);
+  $postLabel = (string)($pl->fetchColumn() ?: '');
+}
+
 // Teachers with duty assignments only (exclude term exclusions)
 $tsql = 'SELECT DISTINCT t.id, t.first_name, t.last_name
   FROM duty_term_assignments ta
@@ -47,6 +55,10 @@ $tparams = [$year_id, $term_no];
 if ($building_id > 0) {
   $tsql .= ' AND mp.building_id=?';
   $tparams[] = $building_id;
+}
+if ($post_id > 0) {
+  $tsql .= ' AND ms.duty_post_id=?';
+  $tparams[] = $post_id;
 }
 $tsql .= '
     AND NOT EXISTS (
@@ -86,6 +98,10 @@ $params = [$year_id, $term_no];
 if ($building_id > 0) {
   $sql .= ' AND mp.building_id=?';
   $params[] = $building_id;
+}
+if ($post_id > 0) {
+  $sql .= ' AND ms.duty_post_id=?';
+  $params[] = $post_id;
 }
 $sql .= '
     AND NOT EXISTS (
@@ -230,11 +246,11 @@ $today = date('Y-m-d');
       <div class="top">
         <div>
           <h1 class="title">รายงานเวรครู (แยกตามครู)</h1>
-          <div class="sub">ปีการศึกษา: <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> · <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' · อาคาร: '.htmlspecialchars($buildingLabel)) : '' ?> · วันที่พิมพ์: <?= htmlspecialchars($today); ?></div>
+          <div class="sub">ปีการศึกษา: <?= htmlspecialchars($yearLabel ?: (string)$year_id); ?> · <?= htmlspecialchars($termName); ?><?= $buildingLabel ? (' · อาคาร: '.htmlspecialchars($buildingLabel)) : '' ?><?= $postLabel ? (' · จุดเวร: '.htmlspecialchars($postLabel)) : '' ?> · วันที่พิมพ์: <?= htmlspecialchars($today); ?></div>
         </div>
         <div class="actions">
           <button class="btn primary" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
-          <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?('&building_id='.$building_id):''))); ?>">กลับหน้าสรุป</a>
+          <a class="btn" href="<?= htmlspecialchars(url('duty_summary.php?year_id='.$year_id.'&term_no='.$term_no.($building_id>0?('&building_id='.$building_id):'').($post_id>0?('&post_id='.$post_id):''))); ?>">กลับหน้าสรุป</a>
           <div class="print-hint">ถ้าพิมพ์แล้วสีไม่ออก: ในหน้าปริ้นของเบราว์เซอร์ให้เปิด “Background graphics” (พิมพ์พื้นหลัง)</div>
         </div>
       </div>

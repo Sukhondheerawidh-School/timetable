@@ -1284,6 +1284,11 @@ include __DIR__ . '/../partials/navbar.php';
         html += '</td>';
         days.forEach(function(d) {
           var shiftIds = (shiftBySlotDay[slotId] && shiftBySlotDay[slotId][d]) ? shiftBySlotDay[slotId][d] : [];
+          shiftIds.sort(function(a, b) {
+            var na = (PM.shifts[a] && PM.shifts[a].postName) || '';
+            var nb = (PM.shifts[b] && PM.shifts[b].postName) || '';
+            return na.localeCompare(nb, 'th');
+          });
           html += '<td style="vertical-align:top;padding:0;">';
           if (!shiftIds.length) {
             html += '<div style="min-height:72px;background:#0f172a;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#1e293b;font-size:1.2rem;">—</div>';
