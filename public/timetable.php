@@ -523,244 +523,14 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   }
 }
 
-// ✅ เพิ่ม: เช็คว่ามีข้อมูล confirm หรือไม่
+// ✅ เช็ค confirm data (ใช้สำหรับ modal ยืนยัน)
 $confirmData = $_SESSION['confirm_add_data'] ?? null;
 unset($_SESSION['confirm_add_data']);
-
-/* =========================
-   Fetch slots for view
-========================= */
-if ($view==='class') {
-  $q=$pdo->prepare('SELECT ts.*, t.first_name, t.last_name, r.room_name
-                    FROM timetable_slots ts
-                    LEFT JOIN teachers t ON t.id=ts.teacher_id
-                    LEFT JOIN rooms r ON r.id=ts.room_id
-                    WHERE ts.academic_year_id=? AND ts.term_no=? AND ts.class_id=?');
-  $q->execute([$year_id,$term_no,$class_id]);
-  $slots=$q->fetchAll();
-} else {
-  $q=$pdo->prepare('SELECT DISTINCT ts.*, c.class_name, r.room_name
-                    FROM timetable_slots ts
-                    JOIN timetable_slot_teachers st ON st.slot_id = ts.id AND st.teacher_id = ?
-                    JOIN classes c ON c.id=ts.class_id
-                    LEFT JOIN rooms r ON r.id=ts.room_id
-                    WHERE ts.academic_year_id=? AND ts.term_no=? 
-                    ORDER BY ts.day_of_week, ts.period_no');
-  $q->execute([$teacher_id,$year_id,$term_no]);
-  $slots=$q->fetchAll();
-}
-$cell=[]; foreach($slots as $s){ $cell[(int)$s['day_of_week']][(int)$s['period_no']][]=$s; }
-$slotTeacherNames = fetch_teachers_for_slots($pdo, array_map(fn($r)=> (int)$r['id'],$slots));
-
-/* =========================
-   Map: room ของกำลังสอน (fallback)
-========================= */
-$loadRoomMap = [];
-$stLR = $pdo->prepare("
-  SELECT tl.class_id, tl.teacher_id, tl.room_id, r.room_name,
-         CASE WHEN IFNULL(s.subject_code,'')=''
-              THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END AS subj_lbl
-  FROM teaching_loads tl
-  JOIN subjects s ON s.id=tl.subject_id
-  LEFT JOIN rooms r ON r.id=tl.room_id
-  WHERE tl.academic_year_id=? AND tl.term_no=?
-");
-$stLR->execute([$year_id,$term_no]);
-foreach ($stLR as $row) {
-  $key = $year_id.'|'.$term_no.'|'.$row['class_id'].'|'.$row['teacher_id'].'|'.$row['subj_lbl'];
-  $loadRoomMap[$key] = $row['room_name'] ?? '';
-}
-
-/* =========================
-   Breaks & Activities
-========================= */
-$grade_label_for_view=null;
-if ($view==='class'){ $grade_label_for_view = $classes[$class_id]['grade_label'] ?? null; }
-$breakPeriods=[];
-if ($grade_label_for_view){
-  $st=$pdo->prepare('SELECT period_no FROM grade_breaks WHERE grade_label=?'); $st->execute([$grade_label_for_view]);
-  $breakPeriods=array_map('intval',$st->fetchAll(PDO::FETCH_COLUMN));
-}
-
-// ✅ Get all periods for populating all-day activities
-$allPeriods = array_map('intval', array_map(fn($p) => $p['period_no'], $periods));
-$nonBreakPeriods = array_diff($allPeriods, $breakPeriods);
-
-$activityCell=[];
-if ($view==='class'){
-  // Regular activities (single period)
-  $st=$pdo->prepare('SELECT ag.day_of_week,ag.period_no,ag.activity_name
-                     FROM activity_groups ag JOIN activity_classes ac ON ac.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.is_all_day=0');
-  $st->execute([$year_id,$term_no,$class_id]);
-  foreach($st as $r) $activityCell[(int)$r['day_of_week']][(int)$r['period_no']]=$r['activity_name'];
-  
-  // All-day activities - populate across all non-break periods
-  $stAllDay=$pdo->prepare('SELECT ag.day_of_week,ag.activity_name
-                     FROM activity_groups ag JOIN activity_classes ac ON ac.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND ac.class_id=? AND ag.is_all_day=1');
-  $stAllDay->execute([$year_id,$term_no,$class_id]);
-  foreach($stAllDay as $r) {
-    $day = (int)$r['day_of_week'];
-    foreach ($nonBreakPeriods as $pno) {
-      // Only populate if not already has an activity
-      if (!isset($activityCell[$day][$pno])) {
-        $activityCell[$day][$pno] = $r['activity_name'];
-      }
-    }
-  }
-}else{
-  // Regular activities (single period)
-  $st=$pdo->prepare('SELECT ag.day_of_week,ag.period_no,ag.activity_name
-                     FROM activity_groups ag JOIN activity_teachers at ON at.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.is_all_day=0');
-  $st->execute([$year_id,$term_no,$teacher_id]);
-  foreach($st as $r) $activityCell[(int)$r['day_of_week']][(int)$r['period_no']]=$r['activity_name'];
-  
-  // All-day activities - populate across all non-break periods (teachers don't have breaks, but we still skip all periods if there's no regular activity)
-  $stAllDay=$pdo->prepare('SELECT ag.day_of_week,ag.activity_name
-                     FROM activity_groups ag JOIN activity_teachers at ON at.activity_id=ag.id
-                     WHERE ag.academic_year_id=? AND ag.term_no=? AND at.teacher_id=? AND ag.is_all_day=1');
-  $stAllDay->execute([$year_id,$term_no,$teacher_id]);
-  foreach($stAllDay as $r) {
-    $day = (int)$r['day_of_week'];
-    foreach ($allPeriods as $pno) {
-      // Only populate if not already has an activity
-      if (!isset($activityCell[$day][$pno])) {
-        $activityCell[$day][$pno] = $r['activity_name'];
-      }
-    }
-  }
-}
-
-/* =========================
-   Loads for add-form
-========================= */
-if ($view==='class') {
-  $loadsStmt=$pdo->prepare('
-    SELECT 
-      tl.id, 
-      tl.periods_per_week, 
-      tl.room_id, 
-      tl.consecutive_slots, 
-      s.subject_code, 
-      s.subject_name, 
-      t.first_name, 
-      t.last_name,
-      (
-        SELECT COUNT(DISTINCT ts.id)
-        FROM timetable_slots ts
-        JOIN timetable_slot_teachers st ON st.slot_id = ts.id AND st.teacher_id = tl.teacher_id
-        WHERE ts.academic_year_id = tl.academic_year_id
-          AND ts.term_no = tl.term_no
-          AND ts.class_id = tl.class_id
-          AND ts.subject_name = CASE 
-            WHEN IFNULL(s.subject_code, "") = "" 
-            THEN s.subject_name 
-            ELSE CONCAT(s.subject_code, " - ", s.subject_name) 
-          END
-      ) AS used_count
-    FROM teaching_loads tl
-    JOIN subjects s ON s.id = tl.subject_id
-    JOIN teachers t ON t.id = tl.teacher_id
-    WHERE tl.academic_year_id = ? 
-      AND tl.term_no = ? 
-      AND tl.class_id = ?
-    HAVING used_count < tl.periods_per_week
-    ORDER BY s.subject_code, s.subject_name
-  ');
-  $loadsStmt->execute([$year_id,$term_no,$class_id]);
-  $loads=$loadsStmt->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
-} else {
-  $loadsStmt=$pdo->prepare('
-    SELECT 
-      tl.id, 
-      tl.periods_per_week, 
-      tl.room_id, 
-      tl.consecutive_slots, 
-      s.subject_code, 
-      s.subject_name, 
-      c.class_name,
-      (
-        SELECT COUNT(DISTINCT ts.id)
-        FROM timetable_slots ts
-        JOIN timetable_slot_teachers st ON st.slot_id = ts.id AND st.teacher_id = ?
-        WHERE ts.academic_year_id = tl.academic_year_id
-          AND ts.term_no = tl.term_no
-          AND ts.class_id = tl.class_id
-          AND ts.subject_name = CASE 
-            WHEN IFNULL(s.subject_code, "") = "" 
-            THEN s.subject_name 
-            ELSE CONCAT(s.subject_code, " - ", s.subject_name) 
-          END
-      ) AS used_count
-    FROM teaching_loads tl
-    JOIN subjects s ON s.id = tl.subject_id
-    JOIN classes c ON c.id = tl.class_id
-    WHERE tl.academic_year_id = ? 
-      AND tl.term_no = ? 
-      AND tl.teacher_id = ?
-    HAVING used_count < tl.periods_per_week
-    ORDER BY c.class_name, s.subject_code, s.subject_name
-  ');
-  $loadsStmt->execute([$teacher_id,$year_id,$term_no,$teacher_id]);
-  $loads=$loadsStmt->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
-}
-
-/* =========================
-   Remain panel
-========================= */
-$remainRows=[];
-if ($view==='class' && $class_id) {
-  $sql="
-    SELECT
-      tl.id AS load_id,
-      tl.periods_per_week,
-      s.subject_code, s.subject_name,
-      tl.teacher_id AS lead_id,
-      (
-        SELECT COUNT(DISTINCT ts.id)
-        FROM timetable_slots ts
-        JOIN timetable_slot_teachers st ON st.slot_id=ts.id AND st.teacher_id=tl.teacher_id
-        WHERE ts.academic_year_id=tl.academic_year_id
-          AND ts.term_no=tl.term_no
-          AND ts.class_id=tl.class_id
-          AND ts.subject_name = CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END
-      ) AS used_count
-    FROM teaching_loads tl
-    JOIN subjects s ON s.id=tl.subject_id
-    WHERE tl.academic_year_id=? AND tl.term_no=? AND tl.class_id=?
-    ORDER BY s.subject_name, tl.id
-  ";
-  $st=$pdo->prepare($sql); $st->execute([$year_id,$term_no,$class_id]); $remainRows=$st->fetchAll();
-} elseif ($view==='teacher' && $teacher_id) {
-  $sql="
-    SELECT
-      tl.id AS load_id,
-      tl.periods_per_week,
-      s.subject_code, s.subject_name, c.class_name,
-      (
-        SELECT COUNT(DISTINCT ts.id)
-        FROM timetable_slots ts
-        JOIN timetable_slot_teachers st ON st.slot_id=ts.id AND st.teacher_id=? 
-        WHERE ts.academic_year_id=tl.academic_year_id
-          AND ts.term_no=tl.term_no
-          AND ts.class_id=tl.class_id
-          AND ts.subject_name = CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END
-      ) AS used_count
-    FROM teaching_loads tl
-    JOIN subjects s ON s.id=tl.subject_id
-    JOIN classes  c ON c.id=tl.class_id
-    WHERE tl.academic_year_id=? AND tl.term_no=? AND tl.teacher_id=?
-    ORDER BY c.class_name, s.subject_name, tl.id
-  ";
-  $st=$pdo->prepare($sql); $st->execute([$teacher_id,$year_id,$term_no,$teacher_id]); $remainRows=$st->fetchAll();
-}
 
 $flash = flash_get();
 
 /* =========================
-   View
+   View (shell — grid โหลดผ่าน AJAX จาก timetable_grid.php)
 ========================= */
 include __DIR__.'/../partials/head.php';
 include __DIR__.'/../partials/navbar.php';
@@ -1279,348 +1049,133 @@ details:not(.tt-nav)[open] > summary {
     }
   </script>
 
-  <!-- ✅ ตารางจัดตารางสอน (ย้ายมาไว้ก่อน) -->
-  <div class="timetable-container bg-white rounded-2xl shadow mb-6">
-    <table class="timetable-table text-sm border-collapse" style="--period-count: <?= $periodCount ?>;">
-      <thead class="bg-slate-100">
-        <tr>
-          <th class="text-left px-4 py-3 border-b-2 border-slate-300 font-bold">วัน \ คาบ</th>
-          <?php foreach($periods as $p): ?>
-            <th class="text-center px-2 py-3 border-b-2 border-slate-300 font-semibold">
-              <?= (int)$p['period_no']; ?><br>
-              <span class="text-xs text-slate-600 font-normal">
-                <?= substr($p['start_time'],0,5); ?>–<?= substr($p['end_time'],0,5); ?>
-              </span>
-            </th>
-          <?php endforeach; ?>
-        </tr>
-      </thead>
-      <tbody>
-        <?php 
-        $daysToShow = [1, 2, 3, 4, 5];
-        if ($has_saturday) $daysToShow[] = 6;
-        if ($has_sunday) $daysToShow[] = 7;
-        
-        $dayColors = [
-          1 => 'bg-yellow-50 border-l-4 border-yellow-400',
-          2 => 'bg-pink-50 border-l-4 border-pink-400',
-          3 => 'bg-green-50 border-l-4 border-green-400',
-          4 => 'bg-orange-50 border-l-4 border-orange-400',
-          5 => 'bg-blue-50 border-l-4 border-blue-400',
-          6 => 'bg-purple-50 border-l-4 border-purple-400',
-          7 => 'bg-red-50 border-l-4 border-red-400',
-        ];
-        
-        $dayNames = [
-          1 => 'จันทร์', 
-          2 => 'อังคาร', 
-          3 => 'พุธ', 
-          4 => 'พฤหัสบดี', 
-          5 => 'ศุกร์',
-          6 => 'เสาร์',
-          7 => 'อาทิตย์'
-        ];
-        
-        foreach ($daysToShow as $d): 
-        ?>
-          <tr class="border-t border-slate-200">
-            <td class="px-4 py-3 font-bold text-slate-800 <?= $dayColors[$d] ?? 'bg-slate-50' ?>">
-              <?= $dayNames[$d] ?? '' ?>
-            </td>
-            <?php foreach ($periods as $p):
-              $pp=(int)$p['period_no']; $items=$cell[$d][$pp] ?? [];
-            ?>
-              <td class="px-2 py-2 border-l border-slate-200 align-top">
-                <div class="cell-content">
-                  <?php
-                  if ($view==='class' && in_array($pp,$breakPeriods)) {
-                    echo '<div class="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-2 text-center text-xs text-yellow-900 font-semibold">💤 พัก</div>';
-                  } elseif (isset($activityCell[$d][$pp])) {
-                    echo '<div class="bg-sky-100 border-2 border-sky-400 rounded-lg p-2 text-center text-xs text-sky-900 font-semibold">🎯 '.htmlspecialchars((string)$activityCell[$d][$pp]).'</div>';
-                  } elseif ($items) {
-                    foreach($items as $it){
-                      $names = $slotTeacherNames[$it['id']] ?? [];
-
-                      $resolveHomeroom = function(int $clsId) use ($classes, $rooms) {
-                        $hid = (int)($classes[$clsId]['homeroom_room_id'] ?? 0);
-                        if ($hid && !empty($rooms[$hid])) return $rooms[$hid];
-                        if ($hid) return 'ห้อง #'.$hid;
-                        return '';
-                      };
-                      $resolveClassName = function(int $clsId) use ($classes) {
-                        return $classes[$clsId]['class_name'] ?? '';
-                      };
-
-                      $roomNameToShow = $it['room_name'] ?? '';
-
-                      if ($roomNameToShow === '' || $roomNameToShow === null) {
-                        $loadKey = $year_id.'|'.$term_no.'|'.$it['class_id'].'|'.$it['teacher_id'].'|'.$it['subject_name'];
-                        $loadRoomName = $loadRoomMap[$loadKey] ?? '';
-
-                        if ($loadRoomName !== '') {
-                          $roomNameToShow = $loadRoomName;
-                        } else {
-                          $roomNameToShow = ($view==='class')
-                            ? $resolveHomeroom((int)$class_id)
-                            : $resolveHomeroom((int)$it['class_id']);
-
-                          if ($roomNameToShow === '') {
-                            $roomNameToShow = ($view==='class')
-                              ? $resolveClassName((int)$class_id)
-                              : $resolveClassName((int)$it['class_id']);
-                          }
-                        }
-                      }
-                      
-                      // ✅ แยกชื่อวิชาออกจากรหัส (ถ้ามี)
-                      $subjectFullName = (string)$it['subject_name'];
-                      $subjectDisplayName = $subjectFullName;
-                      
-                      // ตัด " - " ออก ถ้ามีรหัสวิชา
-                      if (strpos($subjectFullName, ' - ') !== false) {
-                        $parts = explode(' - ', $subjectFullName, 2);
-                        $subjectDisplayName = $parts[1]; // เอาเฉพาะชื่อวิชา
-                      }
-                      
-                      // ✅ สร้าง tooltip แบบละเอียด
-                      $tooltipParts = [];
-                      $tooltipParts[] = '📚 ' . $subjectFullName;
-                      if (!empty($roomNameToShow)) {
-                        $tooltipParts[] = '📍 ห้อง: ' . $roomNameToShow;
-                      }
-                      if ($view === 'teacher' && !empty($it['class_name'])) {
-                        $tooltipParts[] = '🎓 ชั้น: ' . $it['class_name'];
-                      }
-                      if (!empty($names)) {
-                        $tooltipParts[] = '👥 ครู: ' . implode(', ', $names);
-                      }
-                      $tooltipParts[] = ($it['source']==='auto' ? '🤖 จัดอัตโนมัติ' : '✏️ จัดด้วยตนเอง');
-                      
-                      $tooltip = implode("\n", $tooltipParts);
-                  ?>
-                      <!-- ✅ การ์ดปรับปรุงใหม่ -->
-                      <div class="slot-card slot-<?= $it['source']==='auto' ? 'auto' : 'manual'; ?> border-2 rounded-lg p-2 mb-1.5 transition-all shadow-sm hover:shadow" 
-                           title="<?= htmlspecialchars($tooltip); ?>">
-                        
-                        <!-- ชื่อวิชา - แสดงเฉพาะชื่อ ไม่มีรหัส -->
-                        <div class="subject-name">
-                          <?= htmlspecialchars($subjectDisplayName); ?>
-                        </div>
-
-                        <!-- Info badges แนวนอน -->
-                        <div class="info-row">
-                          <?php if (!empty($roomNameToShow)): ?>
-                            <span class="info-badge room-badge" title="ห้อง: <?= htmlspecialchars($roomNameToShow); ?>">
-                              📍 <?= htmlspecialchars($roomNameToShow); ?>
-                            </span>
-                          <?php endif; ?>
-                          
-                          <?php if ($view === 'teacher' && !empty($it['class_name'])): ?>
-                            <span class="info-badge class-badge" title="ชั้น: <?= htmlspecialchars($it['class_name']); ?>">
-                              🎓 <?= htmlspecialchars($it['class_name']); ?>
-                            </span>
-                          <?php endif; ?>
-                          
-                          <?php foreach ($names as $n): ?>
-                            <span class="info-badge teacher-badge" title="ครู: <?= htmlspecialchars($n) ?>">
-                              👤 <?= htmlspecialchars($n) ?>
-                            </span>
-                          <?php endforeach; ?>
-                        </div>
-
-                        <!-- Footer -->
-                        <div class="slot-footer">
-                          <span class="source-badge">
-                            <?= $it['source']==='auto' ? '🤖 AUTO' : '✏️ MANUAL'; ?>
-                          </span>
-                          <form method="post" onsubmit="return ttConfirmSubmit(this,{text:'ลบคาบนี้?'});" style="display: inline; margin: 0;">
-                            <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="slot_id" value="<?= (int)$it['id']; ?>">
-                            <button type="submit" class="delete-btn text-rose-600 hover:text-rose-700 hover:bg-rose-50">
-                              🗑️ ลบ
-                            </button>
-                          </form>
-                        </div>
-                      </div>
-    <?php
-                    }
-                  } else {
-                  ?>
-                    <details>
-                      <summary class="cursor-pointer text-slate-600 hover:text-slate-900 font-medium text-xs">➕ เพิ่ม</summary>
-                      <form method="post" class="add-form mt-2 space-y-1">
-                        <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
-                        <input type="hidden" name="action" value="add">
-                        <input type="hidden" name="day_of_week" value="<?= (int)$d; ?>">
-                        <input type="hidden" name="period_no" value="<?= (int)$pp; ?>">
-
-                        <label class="block text-[10px] font-semibold mb-0.5">กำลังสอน</label>
-                        <select name="load_id" class="w-full border border-slate-300 rounded px-1.5 py-1.5 text-[11px]" required onchange="ttFillDefaults(this, <?= $maxPeriod ?>, <?= $pp ?>)">
-                          <option value="">-- เลือก --</option>
-                          <?php foreach ($loads as $lid => $ld): ?>
-                            <?php 
-                              $default_room = !empty($ld['room_id']) ? (int)$ld['room_id'] : 0; 
-                              $default_consec = !empty($ld['consecutive_slots']) ? (int)$ld['consecutive_slots'] : 1;
-                              
-                              // ✅ แสดงเฉพาะชื่อวิชา (ไม่มีรหัส)
-                              $displayLabel = load_label_for_dropdown($view, $ld);
-                              
-                              // ✅ tooltip แสดงข้อมูลเต็ม (มีรหัสวิชา)
-                              $fullLabel = load_label_full($view, $ld);
-                              
-                              // ตัดชื่อยาวเกิน 40 ตัวอักษรสำหรับแสดง
-                              $shortLabel = $displayLabel;
-                              if (mb_strlen($shortLabel) > 40) {
-                                $shortLabel = mb_substr($shortLabel, 0, 37) . '...';
-                              }
-                            ?>
-                            <option value="<?= (int)$lid; ?>" 
-                                    data-default-room="<?= $default_room; ?>"
-                                    data-default-consec="<?= $default_consec; ?>"
-                                    title="<?= htmlspecialchars($fullLabel); ?>">
-                              <?= htmlspecialchars($shortLabel); ?>
-                            </option>
-                          <?php endforeach; ?>
-                        </select>
-
-                        <label class="block text-[10px] font-semibold mb-0.5">ห้อง</label>
-                        <select name="room_id" class="w-full border border-slate-300 rounded px-1.5 py-1.5 text-[11px]">
-                          <option value="">— ไม่กำหนด —</option>
-                          <?php foreach ($rooms as $rid => $rname): ?>
-                            <option value="<?= (int)$rid; ?>"><?= htmlspecialchars($rname); ?></option>
-                          <?php endforeach; ?>
-                        </select>
-
-                        <label class="block text-[10px] font-semibold mb-0.5">คาบติด</label>
-                        <input type="number" name="span" value="1" min="1" max="<?= $maxPeriod - $pp + 1 ?>" class="border border-slate-300 rounded w-full text-center text-xs">
-
-                        <div class="flex gap-1 pt-1">
-                          <button type="submit" class="flex-1 px-2 py-1 rounded bg-slate-900 text-white text-[10px] font-bold hover:bg-slate-800">
-                            💾 บันทึก
-                          </button>
-                          <button type="button" onclick="this.closest('details').removeAttribute('open')" 
-                                  class="flex-1 px-2 py-1 rounded border border-slate-300 text-slate-700 text-[10px] font-bold hover:bg-slate-100">
-                            ❌ ยกเลิก
-                          </button>
-                        </div>
-                      </form>
-                    </details>
-                  <?php } ?>
-                </div>
-              </td>
-            <?php endforeach; ?>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
+  <!-- ✅ Grid wrapper — เนื้อหาโหลดผ่าน AJAX -->
+  <div id="tt-grid-wrap" class="mb-6">
+    <div class="bg-white rounded-2xl shadow p-10 text-center text-slate-400">
+      <div style="display:inline-block;width:36px;height:36px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:ttSpin 0.7s linear infinite"></div>
+      <div class="text-sm mt-3">กำลังโหลดตาราง...</div>
+      <style>@keyframes ttSpin{to{transform:rotate(360deg)}}</style>
+    </div>
   </div>
 
-  <!-- ✅ ตารางรวมกำลัง (ย้ายมาไว้ด้านล่าง) -->
-  <div class="bg-white rounded-2xl shadow p-4">
-    <div class="font-medium mb-2 text-lg">
-      📊 <?= $view==='class' ? 'วิชาที่ต้องลงให้ห้องนี้' : 'วิชาที่ต้องลงสำหรับครูนี้'; ?>
-    </div>
-    <?php if(!$remainRows): ?>
-      <div class="text-slate-500 text-sm py-6 text-center">
-        ✅ ไม่มีวิชาที่ต้องลงแล้ว (ครบทุกคาบ)
-      </div>
-    <?php else: ?>
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-slate-50">
-            <tr>
-              <?php if($view==='teacher'): ?><th class="text-left px-3 py-2 font-semibold">ห้อง</th><?php endif; ?>
-              <th class="text-left px-3 py-2 font-semibold">วิชา</th>
-              <th class="text-center px-3 py-2 font-semibold">ใช้ไป</th>
-              <th class="text-center px-3 py-2 font-semibold">กำลัง</th>
-              <th class="text-left px-3 py-2 font-semibold">คงเหลือ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach($remainRows as $r):
-              $label = subj_label($r['subject_code'],$r['subject_name']);
-              $used = (int)$r['used_count'];
-              $ppw  = (int)$r['periods_per_week'];
-              $left = max(0,$ppw-$used);
-            ?>
-              <tr class="border-t hover:bg-slate-50">
-                <?php if($view==='teacher'): ?>
-                  <td class="px-3 py-2"><?= htmlspecialchars((string)($r['class_name'] ?? '')) ?></td>
-                <?php endif; ?>
-                <td class="px-3 py-2 font-medium"><?= htmlspecialchars($label) ?></td>
-                <td class="px-3 py-2 text-center"><?= $used ?></td>
-                <td class="px-3 py-2 text-center"><?= $ppw ?></td>
-                <td class="px-3 py-2">
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-                      <div class="h-2 rounded-full transition-all <?= $left===0 ? 'bg-emerald-400' : 'bg-blue-400'; ?>" style="width:<?= min(100, (int)round($used/$ppw*100)); ?>%"></div>
-                    </div>
-                    <?php if ($left > 0): ?>
-                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs"><?= $left ?></span>
-                    <?php else: ?>
-                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 font-bold text-xs">✓</span>
-                    <?php endif; ?>
-                  </div>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    <?php endif; ?>
+  <!-- ✅ Remain panel wrapper — เนื้อหาโหลดผ่าน AJAX -->
+  <div id="tt-remain-wrap">
+    <div class="bg-white rounded-2xl shadow p-4 opacity-30 h-20"></div>
   </div>
 </div>
 
 <script>
-  function ttFillDefaults(sel, maxPeriod, currentPeriod){
-    const form = sel.closest('form');
-    const roomSel = form.querySelector('select[name="room_id"]');
-    const spanInput = form.querySelector('input[name="span"]');
-    const opt = sel.selectedOptions[0];
-    if (!opt) return;
-    
+/* ===== ttFillDefaults: อ่านค่า maxPeriod/period จาก data attributes ===== */
+function ttFillDefaults(sel) {
+  const det = sel.closest('details[data-period]');
+  const maxPeriod     = det ? (parseInt(det.dataset.maxPeriod) || 9) : 9;
+  const currentPeriod = det ? (parseInt(det.dataset.period)    || 1) : 1;
+  const form     = sel.closest('form');
+  const roomSel  = form ? form.querySelector('select[name="room_id"]')  : null;
+  const spanInp  = form ? form.querySelector('input[name="span"]')       : null;
+  const opt      = sel.selectedOptions[0];
+  if (!opt) return;
+
+  if (roomSel) {
     const defRoom = opt.getAttribute('data-default-room');
-    if (defRoom && defRoom !== '0') roomSel.value = defRoom;
-    else roomSel.value = '';
-    
+    roomSel.value = (defRoom && defRoom !== '0') ? defRoom : '';
+  }
+  if (spanInp) {
     const defConsec = parseInt(opt.getAttribute('data-default-consec')) || 1;
-    const maxSpan = Math.max(1, maxPeriod - currentPeriod + 1);
-    const safeSpan = Math.min(defConsec, maxSpan);
-    
-    spanInput.value = safeSpan;
-    spanInput.max = maxSpan;
-    
+    const maxSpan   = Math.max(1, maxPeriod - currentPeriod + 1);
+    const safeSpan  = Math.min(defConsec, maxSpan);
+    spanInp.value = safeSpan;
+    spanInp.max   = maxSpan;
     if (defConsec > maxSpan) {
-      spanInput.classList.add('border-orange-400');
-      spanInput.title = `ตั้งค่าเดิม ${defConsec} คาบ แต่ลงได้สูงสุด ${maxSpan} คาบ`;
+      spanInp.classList.add('border-orange-400');
+      spanInp.title = `ตั้งค่าเดิม ${defConsec} คาบ แต่ลงได้สูงสุด ${maxSpan} คาบ`;
     } else {
-      spanInput.classList.remove('border-orange-400');
-      spanInput.title = '';
+      spanInp.classList.remove('border-orange-400');
+      spanInp.title = '';
     }
   }
+}
 
-  // ✅ Loading overlay เมื่อ filter เปลี่ยน
-  (function() {
-    const overlay = document.createElement('div');
-    overlay.id = 'loadingOverlay';
-    overlay.innerHTML = '<div class="flex flex-col items-center gap-3"><div style="width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite"></div><span class="text-sm text-slate-600 font-medium">กำลังโหลด...</span></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
-    document.body.appendChild(overlay);
+/* ===== Template population: โหลด room/loads select เมื่อ details เปิด ===== */
+document.addEventListener('toggle', function(e) {
+  if (!e.target.matches('details[data-period]') || !e.target.open) return;
+  const det = e.target;
 
-    const filterForm = document.getElementById('filterForm');
-    if (filterForm) {
-      const origSubmit = HTMLFormElement.prototype.submit;
-      filterForm.addEventListener('submit', function() {
-        overlay.classList.add('active');
-      });
-      // auto-submit selects ก็ trigger submit event ผ่าน form.submit() — patch
-      const _submit = filterForm.submit.bind(filterForm);
-      filterForm.submit = function() {
-        overlay.classList.add('active');
-        _submit();
-      };
+  const rph = det.querySelector('.tt-room-ph');
+  if (rph && !rph.firstChild) {
+    const tpl = document.getElementById('tpl-room');
+    if (tpl) rph.appendChild(tpl.content.cloneNode(true));
+  }
+
+  const lph = det.querySelector('.tt-loads-ph');
+  if (lph && !lph.firstChild) {
+    const tpl = document.getElementById('tpl-loads');
+    if (tpl) {
+      const node = tpl.content.cloneNode(true);
+      const sel  = node.querySelector('select');
+      if (sel) sel.addEventListener('change', function() { ttFillDefaults(this); });
+      lph.appendChild(node);
     }
-  })();
+  }
+}, true);
+
+/* ===== AJAX grid loading ===== */
+const ttGridWrap   = document.getElementById('tt-grid-wrap');
+const ttRemainWrap = document.getElementById('tt-remain-wrap');
+
+function showGridLoading() {
+  if (ttGridWrap)   ttGridWrap.innerHTML   = '<div class="bg-white rounded-2xl shadow p-10 text-center text-slate-400"><div style="display:inline-block;width:36px;height:36px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:ttSpin 0.7s linear infinite"></div><div class="text-sm mt-3">กำลังโหลด...</div></div>';
+  if (ttRemainWrap) ttRemainWrap.innerHTML = '<div class="bg-white rounded-2xl shadow p-4 opacity-30 h-20"></div>';
+}
+
+async function loadTTGrid() {
+  const params = new URLSearchParams(window.location.search);
+  try {
+    const resp = await fetch('timetable_grid.php?' + params.toString(), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    if (ttGridWrap)   ttGridWrap.innerHTML   = data.grid;
+    if (ttRemainWrap) ttRemainWrap.innerHTML = data.remain;
+  } catch (err) {
+    if (ttGridWrap) ttGridWrap.innerHTML =
+      `<div class="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">⚠️ โหลดตารางไม่สำเร็จ: ${err.message} — <a href="" class="underline">ลองใหม่</a></div>`;
+  }
+}
+
+/* ===== Filter form intercept → AJAX ===== */
+const filterForm = document.getElementById('filterForm');
+if (filterForm) {
+  filterForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const params = new URLSearchParams(new FormData(this));
+    history.pushState(null, '', 'timetable.php?' + params.toString());
+    showGridLoading();
+    loadTTGrid();
+  });
+  // Patch .submit() สำหรับ auto-submit selects (ไม่ trigger submit event ปกติ)
+  filterForm.submit = function() {
+    const params = new URLSearchParams(new FormData(filterForm));
+    history.pushState(null, '', 'timetable.php?' + params.toString());
+    showGridLoading();
+    loadTTGrid();
+  };
+}
+
+// Back/Forward browser
+window.addEventListener('popstate', function() {
+  showGridLoading();
+  loadTTGrid();
+});
+
+// โหลด grid ทันทีที่หน้าโหลด — ถ้า URL ไม่มี params ให้ใช้ค่าจาก form
+if (!window.location.search && filterForm) {
+  const params = new URLSearchParams(new FormData(filterForm));
+  history.replaceState(null, '', 'timetable.php?' + params.toString());
+}
+loadTTGrid();
 </script>
 
 <?php include __DIR__.'/../partials/footer.php'; ?>

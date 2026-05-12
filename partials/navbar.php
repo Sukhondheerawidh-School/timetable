@@ -162,18 +162,22 @@ $openReport    = group_open($reportFiles, $path);
           <svg class="tt-chevron h-4 w-4 text-slate-400 transition-transform" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.24 4.5a.75.75 0 0 1-1.08 0l-4.24-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
         </summary>
         <div class="tt-nav-links mt-1 pl-2 border-l border-slate-200 space-y-1">
+          <?php if ($isAdmin): ?>
           <a href="<?= url('activities.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('activities.php', $path); ?>">
             <span class="text-lg">🎯</span>
             <span>วิชากิจกรรม</span>
           </a>
+          <?php endif; ?>
           <a href="<?= url('loads.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('loads.php', $path); ?>">
             <span class="text-lg">📊</span>
             <span>กำลังสอน</span>
           </a>
+          <?php if ($isAdmin): ?>
           <a href="<?= url('teacher_constraints.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('teacher_constraints.php', $path); ?>">
             <span class="text-lg">🚫</span>
             <span>ข้อจำกัดครู</span>
           </a>
+          <?php endif; ?>
         </div>
       </details>
 

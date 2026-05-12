@@ -162,6 +162,43 @@ $director_date = array_key_exists('director_date', $_GET)
 
 $applied = isset($_GET['__apply']);
 
+// ✅ บันทึกข้อมูลหัวกระดาษอย่างเดียว (ไม่ render report) แล้ว redirect กลับ
+if (isset($_GET['__save_header'])) {
+  $school_name_save = trim((string)($_GET['school_name'] ?? ''));
+  $year_text_save   = trim((string)($_GET['year_text'] ?? ''));
+  $term_text_save   = trim((string)($_GET['term_text'] ?? ''));
+  $dir_name_save    = trim((string)($_GET['director_name'] ?? ''));
+  $dir_date_save    = trim((string)($_GET['director_date'] ?? ''));
+  $printed_at_save  = trim((string)($_GET['printed_at'] ?? ''));
+
+  $_SESSION['report_prefs'] = array_merge($sessionReportPrefs, [
+    'director_name' => $dir_name_save,
+    'director_date' => $dir_date_save,
+  ]);
+  tt_report_prefs_save($pdo, $uid, $dir_name_save, $dir_date_save);
+  if ($isAdmin) {
+    tt_app_setting_set($pdo, 'report_director_name', $dir_name_save);
+    tt_app_setting_set($pdo, 'report_director_date', $dir_date_save);
+  }
+  if ($cookieName !== '') {
+    $cookieValue = json_encode(['director_name' => $dir_name_save, 'director_date' => $dir_date_save], JSON_UNESCAPED_UNICODE);
+    if ($cookieValue !== false) setcookie($cookieName, rawurlencode($cookieValue), time() + 31536000, $cookiePath);
+  }
+
+  // Rebuild URL โดยเอา __save_header ออก แล้ว redirect
+  $params = $_GET;
+  unset($params['__save_header'], $params['__apply']);
+  $params['school_name']    = $school_name_save;
+  $params['year_text']      = $year_text_save;
+  $params['term_text']      = $term_text_save;
+  $params['director_name']  = $dir_name_save;
+  $params['director_date']  = $dir_date_save;
+  $params['printed_at']     = $printed_at_save;
+  $params['__saved']        = '1'; // แสดง toast สำเร็จ
+  header('Location: ' . url('report.php') . '?' . http_build_query($params));
+  exit;
+}
+
 // ✅ จำค่าที่ใช้บ่อย (ต่อผู้ใช้) เมื่อกดแสดงตัวอย่าง/พิมพ์
 if ($applied) {
   $_SESSION['report_prefs'] = array_merge($sessionReportPrefs, [
@@ -305,18 +342,9 @@ try {
 
 $yearLabel = '';
 foreach($years as $y){ if((int)$y['id'] === (int)$year_id){ $yearLabel = (string)$y['year_label']; break; } }
-$year_text = $_GET['year_text'] ?? ('ปีการศึกษา '.$yearLabel);
+$year_text = isset($_GET['year_text']) && $_GET['year_text'] !== '' ? (string)$_GET['year_text'] : ('ปีการศึกษา '.$yearLabel);
 $defaultTermText = tt_term_label_from_no($pdo, (int)$year_id, (int)$term_no);
-$term_text = $_GET['term_text'] ?? $defaultTermText;
-
-$rawYearText = $_GET['year_text'] ?? null;
-$rawTermText = $_GET['term_text'] ?? null;
-if ($rawYearText === null || preg_match('/^ปีการศึกษา\s*\S+$/u', trim((string)$rawYearText))) {
-  $year_text = 'ปีการศึกษา '.$yearLabel;
-}
-if ($rawTermText === null || preg_match('/^ภาคเรียนที่\s*\d+$/u', trim((string)$rawTermText))) {
-  $term_text = 'ภาคเรียนที่ '.$term_no;
-}
+$term_text = isset($_GET['term_text']) && $_GET['term_text'] !== '' ? (string)$_GET['term_text'] : $defaultTermText;
 
 $classes = $pdo->query("SELECT id,class_name,homeroom_room_id,grade_label,section_no FROM classes ORDER BY grade_label,section_no")->fetchAll(PDO::FETCH_ASSOC);
 $classById=[]; foreach($classes as $c){ $classById[$c['id']]=$c; }
@@ -1166,7 +1194,7 @@ function buildReportHTML(
           </table>
         </div>
 
-        <?php if(!$for_pdf && !empty($show_approval)): ?>
+        <?php if(!empty($show_approval)): ?>
           <div class="print-only print-notes">
             <div class="sign-row">
               <div class="sign-box approve-box">
@@ -1226,6 +1254,84 @@ if ($export==='print'){
   echo $reportHtml;
   echo '<script>window.print()</script>';
   echo '</body></html>';
+  exit;
+}
+
+if ($export==='blank'){
+  // สร้างตารางเปล่าตามคาบและวันที่กำหนดในระบบ
+  $blankDays = $base_days; // จันทร์-ศุกร์ (หรือเพิ่ม เสาร์/อาทิตย์ถ้ามีห้องที่เรียน)
+  if ($view === 'class' && $class_id !== 'all' && (int)$class_id > 0) {
+    $blankDays = getClassWeekdays($pdo, (int)$class_id);
+    $blankDays = array_combine($blankDays, array_map(fn($d) => [1=>'จันทร์',2=>'อังคาร',3=>'พุธ',4=>'พฤหัสบดี',5=>'ศุกร์',6=>'เสาร์',7=>'อาทิตย์'][$d] ?? '', $blankDays));
+  }
+  $favicon = url('favicon.ico?v='.(string)time());
+  ob_start();
+  echo '<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">';
+  echo '<title>ตารางเปล่า</title>';
+  echo '<link rel="icon" type="image/x-icon" href="'.h($favicon).'">';
+  echo '<style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:"Sarabun",sans-serif;font-size:11px;background:#fff;color:#1e293b}
+    @import url("https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap");
+    .page{width:297mm;min-height:210mm;padding:8mm 8mm 6mm;background:#fff}
+    .header{text-align:center;margin-bottom:5mm}
+    .school-name{font-size:14px;font-weight:700}
+    .sub-header{font-size:11px;color:#475569;margin-top:1mm}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{border:1px solid #94a3b8;padding:2px 3px;text-align:center;vertical-align:middle}
+    thead th{background:#f1f5f9;font-weight:600;font-size:10px}
+    thead th.day-header{width:18mm}
+    tbody td.day-cell{background:#f8fafc;font-weight:600;font-size:10px;white-space:nowrap}
+    tbody td.slot-cell{height:16mm;min-height:16mm}
+    .time-label{font-size:8px;color:#64748b;display:block;margin-top:1px}
+    .sign-row{display:flex;justify-content:flex-end;margin-top:5mm}
+    .sign-box{border:1px solid #94a3b8;border-radius:4px;padding:3mm 6mm;min-width:60mm;text-align:center}
+    .sign-title{font-size:10px;font-weight:600;margin-bottom:8mm}
+    .sign-line{border-bottom:1px solid #94a3b8;margin-bottom:2mm;min-width:50mm;height:10mm}
+    .sign-meta{font-size:9px;color:#475569}
+    .footer{display:flex;justify-content:space-between;margin-top:3mm;font-size:9px;color:#64748b}
+    @media print{body{margin:0}@page{size:A4 landscape;margin:0}}
+  </style></head><body>';
+  echo '<div class="page">';
+  echo '<div class="header">';
+  echo '<div class="school-name">'.h($school_name).'</div>';
+  echo '<div class="sub-header">ตารางเรียน/สอน &nbsp;|&nbsp; '.h($year_text).' &nbsp;|&nbsp; '.h($term_text).'</div>';
+  echo '</div>';
+  echo '<table>';
+  echo '<thead><tr>';
+  echo '<th class="day-header">วัน \ คาบ</th>';
+  foreach($periods as $p){
+    $st = isset($p['start_time']) ? substr((string)$p['start_time'],0,5) : '';
+    $et = isset($p['end_time'])   ? substr((string)$p['end_time'],0,5)   : '';
+    echo '<th>คาบ '.(int)$p['period_no'].'<span class="time-label">'.h($st).'-'.h($et).'</span></th>';
+  }
+  echo '</tr></thead><tbody>';
+  $dayNames = [1=>'จันทร์',2=>'อังคาร',3=>'พุธ',4=>'พฤหัสบดี',5=>'ศุกร์',6=>'เสาร์',7=>'อาทิตย์'];
+  foreach($blankDays as $dno => $dname){
+    echo '<tr>';
+    echo '<td class="day-cell">'.h(is_string($dname) ? $dname : ($dayNames[(int)$dno] ?? '')).'</td>';
+    foreach($periods as $p){
+      echo '<td class="slot-cell"></td>';
+    }
+    echo '</tr>';
+  }
+  echo '</tbody></table>';
+  if($show_approval){
+    echo '<div class="sign-row"><div class="sign-box">';
+    echo '<div class="sign-title">อนุมัติ / ผู้อำนวยการ</div>';
+    echo '<div class="sign-line"></div>';
+    echo '<div class="sign-meta"><span>'.h($director_name ?: '(........................................)').'</span><br>';
+    echo '<span>วันที่ '.h($director_date ?: '....../....../......').'</span></div>';
+    echo '</div></div>';
+  }
+  echo '<div class="footer">';
+  echo '<span>'.h($year_text).' · '.h($term_text).'</span>';
+  echo '<span>พิมพ์ ณ วันที่ '.h(thaidate($printed_at)).'</span>';
+  echo '</div>';
+  echo '</div>';
+  echo '<script>window.print()</script>';
+  echo '</body></html>';
+  echo ob_get_clean();
   exit;
 }
 
@@ -1692,7 +1798,14 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
 
       <!-- Section 2: ตั้งค่าหัวกระดาษ -->
       <div>
-        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">🏫 ข้อมูลหัวกระดาษ</p>
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🏫 ข้อมูลหัวกระดาษ</p>
+          <button type="submit" name="__save_header" value="1"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+            title="บันทึกข้อมูลหัวกระดาษโดยไม่ต้องแสดงตัวอย่าง">
+            💾 บันทึก
+          </button>
+        </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div class="col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อโรงเรียน</label>
@@ -1759,6 +1872,10 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
           🖨️ พิมพ์ (แท็บใหม่)
         </button>
+        <button type="submit" name="export" value="blank" formtarget="_blank"
+          class="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
+          📋 ตารางเปล่า
+        </button>
         <a href="<?= h($_SERVER['PHP_SELF']) ?>"
           class="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">
           ↺ ล้างค่า
@@ -1773,6 +1890,13 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
 
 <script>
 (function(){
+  // ✅ แสดง toast เมื่อบันทึกหัวกระดาษสำเร็จ
+  <?php if (isset($_GET['__saved'])): ?>
+  if (window.Swal) {
+    Swal.fire({ icon:'success', title:'บันทึกสำเร็จ', text:'ข้อมูลหัวกระดาษถูกบันทึกแล้ว', timer:2000, showConfirmButton:false, toast:true, position:'top-end' });
+  }
+  <?php endif; ?>
+
   const form = document.getElementById('filterForm');
   
   const yearSel = document.getElementById('f_year');

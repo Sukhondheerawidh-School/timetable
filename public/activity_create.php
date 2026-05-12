@@ -58,6 +58,46 @@ $selectedTermNo = tt_validate_term_no($pdo, $selectedYearId, $selectedTermNo);
 $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
   if (!verify_csrf($_POST['csrf'] ?? '')) $err='CSRF ไม่ถูกต้อง';
   else {
+    // ── AJAX conflict-check only (ไม่ write DB) ──────────────────────
+    if (($_POST['check_only'] ?? '') === '1') {
+      header('Content-Type: application/json; charset=utf-8');
+      $ck_year   = (int)($_POST['academic_year_id'] ?? 0);
+      $ck_term   = $ck_year > 0 ? tt_validate_term_no($pdo, $ck_year, (int)($_POST['term_no'] ?? 1)) : 1;
+      $ck_dow    = (int)($_POST['day_of_week'] ?? 0);
+      $ck_allday = (int)($_POST['is_all_day'] ?? 0) === 1;
+      $ck_pno    = $ck_allday ? null : ((int)($_POST['period_no'] ?? 0) ?: null);
+      $ck_tids   = array_map('intval', (array)($_POST['teacher_ids'] ?? []));
+      $conflicts = [];
+      if (!$ck_allday && !empty($ck_tids) && $ck_pno !== null) {
+        $ph = implode(',', array_fill(0, count($ck_tids), '?'));
+        $stTS = $pdo->prepare("
+          SELECT DISTINCT t.first_name, t.last_name, c.class_name, s.subject_name, 'คาบสอน' AS ctype
+          FROM timetable_slots s JOIN teachers t ON t.id=s.teacher_id JOIN classes c ON c.id=s.class_id
+          WHERE s.academic_year_id=? AND s.term_no=? AND s.day_of_week=? AND s.period_no=? AND s.teacher_id IN ($ph)
+          UNION
+          SELECT DISTINCT t.first_name, t.last_name, c.class_name, s.subject_name, 'คาบสอน' AS ctype
+          FROM timetable_slot_teachers tst JOIN timetable_slots s ON s.id=tst.slot_id
+          JOIN teachers t ON t.id=tst.teacher_id JOIN classes c ON c.id=s.class_id
+          WHERE s.academic_year_id=? AND s.term_no=? AND s.day_of_week=? AND s.period_no=? AND tst.teacher_id IN ($ph)
+        ");
+        $stTS->execute(array_merge([$ck_year,$ck_term,$ck_dow,$ck_pno], $ck_tids, [$ck_year,$ck_term,$ck_dow,$ck_pno], $ck_tids));
+        foreach ($stTS->fetchAll() as $cf) {
+          $conflicts[] = ['name'=>$cf['first_name'].' '.$cf['last_name'], 'ctype'=>$cf['ctype'], 'detail'=>$cf['class_name'].' ('.$cf['subject_name'].')'];
+        }
+        $stAG = $pdo->prepare("
+          SELECT DISTINCT t.first_name, t.last_name, ag.activity_name, 'กิจกรรมอื่น' AS ctype
+          FROM activity_teachers atr JOIN activity_groups ag ON ag.id=atr.activity_id JOIN teachers t ON t.id=atr.teacher_id
+          WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.day_of_week=? AND ag.period_no=? AND ag.is_all_day=0 AND atr.teacher_id IN ($ph)
+        ");
+        $stAG->execute(array_merge([$ck_year,$ck_term,$ck_dow,$ck_pno], $ck_tids));
+        foreach ($stAG->fetchAll() as $cf) {
+          $conflicts[] = ['name'=>$cf['first_name'].' '.$cf['last_name'], 'ctype'=>$cf['ctype'], 'detail'=>$cf['activity_name']];
+        }
+      }
+      echo json_encode(['ok' => empty($conflicts), 'conflicts' => $conflicts]);
+      exit;
+    }
+    // ─────────────────────────────────────────────────────────────────
     $year_id  = (int)($_POST['academic_year_id'] ?? 0);
     $term_no  = (int)($_POST['term_no'] ?? 1);
     if ($year_id > 0) $term_no = tt_validate_term_no($pdo, $year_id, $term_no);
@@ -92,6 +132,64 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
           throw new Exception('ช่วงเวลาเดียวกันมีชื่อกิจกรรมนี้อยู่แล้ว');
         }
 
+        // ===== ตรวจ conflict ครู (เฉพาะกิจกรรมมีคาบ) =====
+        if (!$is_all_day && !empty($teacher_ids) && $pno !== null) {
+          $ph = implode(',', array_fill(0, count($teacher_ids), '?'));
+
+          // ชนกับคาบสอนในตาราง timetable_slots (ครูหลัก + co-teacher)
+          $sqlTS = "
+            SELECT DISTINCT t.first_name, t.last_name, c.class_name, s.subject_name, 'คาบสอน' AS ctype
+            FROM timetable_slots s
+            JOIN teachers t ON t.id = s.teacher_id
+            JOIN classes c ON c.id = s.class_id
+            WHERE s.academic_year_id = ? AND s.term_no = ? AND s.day_of_week = ? AND s.period_no = ?
+              AND s.teacher_id IN ($ph)
+            UNION
+            SELECT DISTINCT t.first_name, t.last_name, c.class_name, s.subject_name, 'คาบสอน' AS ctype
+            FROM timetable_slot_teachers tst
+            JOIN timetable_slots s ON s.id = tst.slot_id
+            JOIN teachers t ON t.id = tst.teacher_id
+            JOIN classes c ON c.id = s.class_id
+            WHERE s.academic_year_id = ? AND s.term_no = ? AND s.day_of_week = ? AND s.period_no = ?
+              AND tst.teacher_id IN ($ph)
+          ";
+          $paramsTS = array_merge([$year_id,$term_no,$dow,$pno], $teacher_ids,
+                                  [$year_id,$term_no,$dow,$pno], $teacher_ids);
+          $stTS = $pdo->prepare($sqlTS);
+          $stTS->execute($paramsTS);
+          $conflictsTS = $stTS->fetchAll();
+
+          // ชนกับกิจกรรมอื่นในตาราง activity_groups
+          $sqlAG = "
+            SELECT DISTINCT t.first_name, t.last_name, ag.activity_name AS class_name, ag.activity_name AS subject_name, 'กิจกรรมอื่น' AS ctype
+            FROM activity_teachers atr
+            JOIN activity_groups ag ON ag.id = atr.activity_id
+            JOIN teachers t ON t.id = atr.teacher_id
+            WHERE ag.academic_year_id = ? AND ag.term_no = ? AND ag.day_of_week = ? AND ag.period_no = ?
+              AND ag.is_all_day = 0
+              AND atr.teacher_id IN ($ph)
+          ";
+          $paramsAG = array_merge([$year_id,$term_no,$dow,$pno], $teacher_ids);
+          $stAG = $pdo->prepare($sqlAG);
+          $stAG->execute($paramsAG);
+          $conflictsAG = $stAG->fetchAll();
+
+          $allConflicts = array_merge($conflictsTS, $conflictsAG);
+          if (!empty($allConflicts)) {
+            $lines = ['ไม่สามารถบันทึกได้ เนื่องจากครูบางคนมีตารางซ้อนในวัน/คาบที่เลือก:'];
+            foreach ($allConflicts as $cf) {
+              $tName = $cf['first_name'] . ' ' . $cf['last_name'];
+              if ($cf['ctype'] === 'คาบสอน') {
+                $lines[] = '  • ' . $tName . ' — ติดคาบสอน ' . $cf['class_name'] . ' (' . $cf['subject_name'] . ')';
+              } else {
+                $lines[] = '  • ' . $tName . ' — ติดกิจกรรม "' . $cf['class_name'] . '"';
+              }
+            }
+            throw new Exception(implode("\n", $lines));
+          }
+        }
+        // ===================================================
+
         $pdo->beginTransaction();
         $ins = $pdo->prepare('INSERT INTO activity_groups(academic_year_id, term_no, activity_name, day_of_week, period_no, room_id, is_all_day) VALUES (?,?,?,?,?,?,?)');
         $ins->execute([$year_id,$term_no,$name,$dow,$pno,$room_id,$is_all_day]);
@@ -122,9 +220,9 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
         flash_set('success','เพิ่มกิจกรรมสำเร็จ');
         redirect('activities.php?year_id='.$year_id.'&term_no='.$term_no);
       }catch(Throwable $e){
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         if (str_contains($e->getMessage(),'uniq_activity_time')) $err='ช่วงเวลาเดียวกันมีชื่อกิจกรรมนี้อยู่แล้ว';
-        else $err='ผิดพลาด: '.$e->getMessage();
+        else $err=$e->getMessage();
       }
     }
   }
@@ -136,7 +234,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
 
 <div class="max-w-3xl mx-auto px-4">
   <h1 class="text-xl font-semibold mt-8 mb-4">เพิ่มวิชากิจกรรม (เรียนรวม)</h1>
-  <?php if($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
+  <?php if($err): ?><div class="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-2"><span class="shrink-0">❌</span><span class="whitespace-pre-line"><?= htmlspecialchars($err); ?></span></div><?php endif; ?>
 
   <form method="post" class="bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
     <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
@@ -297,6 +395,22 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
   </form>
 </div>
 
+<!-- ── Conflict Modal ────────────────────────────────────────── -->
+<div id="conflict-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xl">⚠️</span>
+      <h2 class="text-base font-semibold text-rose-700">ไม่สามารถบันทึกได้</h2>
+    </div>
+    <p class="text-sm text-slate-600 mb-2">ครูต่อไปนี้มีตารางซ้อนในวัน/คาบที่เลือก:</p>
+    <ul id="conflict-list" class="text-sm text-slate-700 space-y-1.5 mb-4 max-h-52 overflow-auto border border-rose-200 rounded-xl p-3 bg-rose-50"></ul>
+    <div class="flex justify-end">
+      <button id="conflict-close" class="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-xl transition">ตกลง</button>
+    </div>
+  </div>
+</div>
+<!-- ─────────────────────────────────────────────────────────── -->
+
 <script>
 // ✅ ค้นหา/เลือกชั้น (เช็กบ็อกซ์)
 document.addEventListener('DOMContentLoaded', function() {
@@ -452,6 +566,57 @@ document.addEventListener('DOMContentLoaded', function() {
   checkbox.addEventListener('change', updateFieldsDisplay);
   updateFieldsDisplay(); // Initial state
 });
+
+// ── AJAX conflict check before submit ──────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  const form     = document.querySelector('form[method="post"]');
+  const modal    = document.getElementById('conflict-modal');
+  const listEl   = document.getElementById('conflict-list');
+  const closeBtn = document.getElementById('conflict-close');
+  if (!form || !modal) return;
+
+  let submitAllowed = false;
+
+  function closeModal() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+  form.addEventListener('submit', async function(e) {
+    if (submitAllowed) return;
+    e.preventDefault();
+
+    const fd = new FormData(form);
+    fd.append('check_only', '1');
+
+    try {
+      const res  = await fetch(window.location.href, { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (data.ok) {
+        submitAllowed = true;
+        form.submit();
+      } else {
+        listEl.innerHTML = data.conflicts.map(cf => {
+          const icon   = cf.ctype === 'คาบสอน' ? '📚' : '🎯';
+          const detail = cf.ctype === 'คาบสอน'
+            ? `ติดคาบสอน <strong>${cf.detail}</strong>`
+            : `ติดกิจกรรม "<strong>${cf.detail}</strong>"`;
+          return `<li class="flex gap-1.5 items-start">${icon} <span><strong>${cf.name}</strong> — ${detail}</span></li>`;
+        }).join('');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+    } catch (_) {
+      submitAllowed = true;
+      form.submit();
+    }
+  });
+});
+// ───────────────────────────────────────────────────────────────────
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
