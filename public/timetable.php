@@ -172,7 +172,38 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $err = '🔒 ระบบปิดการแก้ไขชั่วคราว กรุณาติดต่อ Superuser';
   } else {
     $action = $_POST['action'] ?? '';
-    if ($action==='add') {
+    if ($action === 'sync_names') {
+      // Sync subject_name in timetable_slots to current subjects table
+      // Only update slots where teacher+class maps to exactly ONE teaching_load (unambiguous)
+      try {
+        $syncSql = "
+          UPDATE timetable_slots ts
+          JOIN (
+            SELECT tl.teacher_id, tl.class_id, tl.academic_year_id, tl.term_no,
+              CASE WHEN IFNULL(s.subject_code,'')='' THEN s.subject_name ELSE CONCAT(s.subject_code,' - ',s.subject_name) END AS new_name
+            FROM teaching_loads tl
+            JOIN subjects s ON s.id = tl.subject_id
+            WHERE (tl.teacher_id, tl.class_id, tl.academic_year_id, tl.term_no) IN (
+              SELECT teacher_id, class_id, academic_year_id, term_no
+              FROM teaching_loads
+              GROUP BY teacher_id, class_id, academic_year_id, term_no
+              HAVING COUNT(*) = 1
+            )
+          ) safe ON safe.teacher_id = ts.teacher_id
+            AND safe.class_id = ts.class_id
+            AND safe.academic_year_id = ts.academic_year_id
+            AND safe.term_no = ts.term_no
+          SET ts.subject_name = safe.new_name
+          WHERE ts.subject_name != safe.new_name
+        ";
+        $updated = $pdo->exec($syncSql);
+        flash_set('success', "ซิงค์ชื่อวิชาเรียบร้อย — อัปเดต {$updated} คาบ (ชื่อครูแสดงจากฐานข้อมูลล่าสุดอัตโนมัติ)");
+      } catch (Throwable $e) {
+        flash_set('error', 'ซิงค์ไม่สำเร็จ: '.$e->getMessage());
+      }
+      redirect('timetable.php?view='.$view.'&year_id='.$year_id.'&term_no='.$term_no
+        .($view==='class'?'&class_id='.$class_id:'&teacher_id='.$teacher_id));
+    } elseif ($action==='add') {
       try {
         $load_id   = (int)($_POST['load_id'] ?? 0);
         $day       = (int)($_POST['day_of_week'] ?? 0);
@@ -931,6 +962,16 @@ details:not(.tt-nav)[open] > summary {
       <a href="<?= url('timetable_auto_missing.php?year_id='.$year_id.'&term_no='.$term_no); ?>" class="px-3 py-2 rounded-xl border text-sm bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100">รายวิชาที่ยังลงไม่ได้</a>
       <?php if ($isAdmin): ?>
         <a href="<?= url('timetable_auto_dashboard.php?year_id='.$year_id.'&term_no='.$term_no); ?>" class="px-3 py-2 rounded-xl border text-sm">เปิดหน้าจัดอัตโนมัติ</a>
+        <form method="post" class="inline" onsubmit="return confirm('ซิงค์ชื่อวิชาจากหน้า กำลังสอน?\n\n(กรณีที่ครู 1 คนสอนหลายวิชาในห้องเดียวกัน จะข้ามคาบนั้นไว้ให้แก้ด้วยตนเอง)');">
+          <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
+          <input type="hidden" name="action" value="sync_names">
+          <input type="hidden" name="view" value="<?= htmlspecialchars($view); ?>">
+          <input type="hidden" name="year_id" value="<?= (int)$year_id; ?>">
+          <input type="hidden" name="term_no" value="<?= (int)$term_no; ?>">
+          <input type="hidden" name="class_id" value="<?= (int)$class_id; ?>">
+          <input type="hidden" name="teacher_id" value="<?= (int)$teacher_id; ?>">
+          <button type="submit" class="px-3 py-2 rounded-xl border text-sm bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100">🔄 ซิงค์ชื่อวิชา</button>
+        </form>
       <?php endif; ?>
     </div>
   </div>

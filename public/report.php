@@ -347,7 +347,9 @@ $year_text = isset($_GET['year_text']) && $_GET['year_text'] !== '' ? (string)$_
 $defaultTermText = tt_term_label_from_no($pdo, (int)$year_id, (int)$term_no);
 $term_text = isset($_GET['term_text']) && $_GET['term_text'] !== '' ? (string)$_GET['term_text'] : $defaultTermText;
 
-$classes = $pdo->query("SELECT id,class_name,homeroom_room_id,grade_label,section_no FROM classes ORDER BY grade_label,section_no")->fetchAll(PDO::FETCH_ASSOC);
+$classes = $pdo->query("SELECT id, class_name, class_alias, grade_label, section_no, homeroom_room_id,
+  CASE WHEN IFNULL(class_alias,'')='' THEN class_name ELSE CONCAT(grade_label,'/',class_alias) END AS class_display_name
+  FROM classes ORDER BY grade_label,section_no")->fetchAll(PDO::FETCH_ASSOC);
 $classById=[]; foreach($classes as $c){ $classById[$c['id']]=$c; }
 
 $teachers = $pdo->query("SELECT id,first_name,last_name,subject_group,teacher_code 
@@ -374,13 +376,34 @@ if ($year_id > 0 && in_array((int)$term_no, [1, 2], true)) {
     $teacherHasTimetable[(int)$tid] = true;
   }
 
+  // รวมครูที่มีกิจกรรม (activity_teachers) ด้วย
+  $st = $pdo->prepare("SELECT DISTINCT att.teacher_id FROM activity_teachers att JOIN activity_groups ag ON ag.id=att.activity_id WHERE ag.academic_year_id=? AND ag.term_no=?");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $tid) {
+    $teacherHasTimetable[(int)$tid] = true;
+  }
+
   $st = $pdo->prepare("SELECT DISTINCT class_id FROM timetable_slots WHERE academic_year_id=? AND term_no=? AND class_id IS NOT NULL");
   $st->execute([$year_id, (int)$term_no]);
   foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $cid) {
     $classHasTimetable[(int)$cid] = true;
   }
 
+  // รวมห้องที่มีกิจกรรม (activity_classes) ด้วย
+  $st = $pdo->prepare("SELECT DISTINCT ac.class_id FROM activity_classes ac JOIN activity_groups ag ON ag.id=ac.activity_id WHERE ag.academic_year_id=? AND ag.term_no=?");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $cid) {
+    $classHasTimetable[(int)$cid] = true;
+  }
+
   $st = $pdo->prepare("SELECT DISTINCT room_id FROM timetable_slots WHERE academic_year_id=? AND term_no=? AND room_id IS NOT NULL");
+  $st->execute([$year_id, (int)$term_no]);
+  foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) {
+    $roomHasTimetable[(int)$rid] = true;
+  }
+
+  // รวมห้องที่ใช้ใน activity_groups ด้วย
+  $st = $pdo->prepare("SELECT DISTINCT room_id FROM activity_groups WHERE academic_year_id=? AND term_no=? AND room_id IS NOT NULL");
   $st->execute([$year_id, (int)$term_no]);
   foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) {
     $roomHasTimetable[(int)$rid] = true;
@@ -434,21 +457,18 @@ function getTeacherWeekdays(PDO $pdo, $year_id, $term_no, $teacher_id) {
   $st->execute([$year_id, $term_no, $teacher_id]);
   $extraDays = $st->fetchAll(PDO::FETCH_COLUMN);
   
-  // ✅ ถ้ามีสอนเสาร์ หรือ อาทิตย์ ให้เพิ่มทั้ง 2 วันเลย
-  $hasWeekend = false;
-  foreach ($extraDays as $d) {
-    $dayNum = (int)$d;
-    if ($dayNum === 6 || $dayNum === 7) {
-      $hasWeekend = true;
-      break;
-    }
+  // ✅ ถ้ามีสอนเสาร์ หรือ อาทิตย์ ให้เพิ่มเฉพาะวันที่มีจริง
+  // แต่ถ้ามีอาทิตย์ ให้เพิ่มเสาร์ด้วยเสมอ (เพื่อไม่ให้ข้ามจากศุกร์ไปอาทิตย์)
+  $hasSat = in_array(6, array_map('intval', $extraDays));
+  $hasSun = in_array(7, array_map('intval', $extraDays));
+
+  if ($hasSat || $hasSun) {
+    $days[] = 6; // เสาร์เสมอ ถ้ามีวันหยุดใดวันหนึ่ง
   }
-  
-  if ($hasWeekend) {
-    $days[] = 6; // เสาร์
-    $days[] = 7; // อาทิตย์
+  if ($hasSun) {
+    $days[] = 7; // อาทิตย์เฉพาะเมื่อมีสอนจริง
   }
-  
+
   return $days;
 }
 
@@ -542,7 +562,8 @@ function gridByTeacher(PDO $pdo,$year_id,$term_no,$teacher_id){
   $max_day = max($weekdays);
   
   // ✅ เพิ่ม ts.room_id ให้ชัดเจน
-  $sql="SELECT ts.id, ts.day_of_week, ts.period_no, ts.subject_name, c.class_name,
+  $sql="SELECT ts.id, ts.day_of_week, ts.period_no, ts.subject_name,
+               CASE WHEN IFNULL(c.class_alias,'')='' THEN c.class_name ELSE CONCAT(c.grade_label,'/',c.class_alias) END AS class_name,
                COALESCE(ts.room_id, c.homeroom_room_id) AS room_id,
                COALESCE(r.room_name, hr.room_name, c.class_name) AS display_room,
                'normal' AS slot_type
@@ -619,7 +640,8 @@ function gridByTeacher(PDO $pdo,$year_id,$term_no,$teacher_id){
 
 function gridByRoom(PDO $pdo,$year_id,$term_no,$room_id){
   // ✅ เพิ่ม ts.room_id ให้ชัดเจน
-  $sql = "SELECT ts.id, ts.day_of_week, ts.period_no, ts.subject_name, c.class_name,
+  $sql = "SELECT ts.id, ts.day_of_week, ts.period_no, ts.subject_name,
+                 CASE WHEN IFNULL(c.class_alias,'')='' THEN c.class_name ELSE CONCAT(c.grade_label,'/',c.class_alias) END AS class_name,
                  COALESCE(ts.room_id, c.homeroom_room_id) AS room_id,
                  COALESCE(r.room_name, hr.room_name, c.class_name) AS display_room,
                  GROUP_CONCAT(t.first_name SEPARATOR ', ') AS teachers,
@@ -870,7 +892,7 @@ if ($view==='class'){
       $merged = detectConsecutiveSlots($grid, $periods, $weekdays);
       $pages[]=[
         'mode'=>'class',
-        'title'=>'ตารางสอนห้อง '.$c['class_name'],
+        'title'=>'ตารางสอนห้อง '.($c['class_display_name'] ?? $c['class_name']),
         'subtitle'=>'ครูประจำชั้น: '.getHomeroomTeachers($pdo,$c['id']),
         'grid'=>$merged,
         'weekdays'=>$weekdays
@@ -883,7 +905,7 @@ if ($view==='class'){
     $merged = detectConsecutiveSlots($grid, $periods, $weekdays);
     $pages[]=[
       'mode'=>'class',
-      'title'=>'ตารางสอนห้อง '.($c['class_name']??''),
+      'title'=>'ตารางสอนห้อง '.(($c['class_display_name'] ?? null) ?: ($c['class_name'] ?? '')),
       'subtitle'=>'ครูประจำชั้น: '.getHomeroomTeachers($pdo,(int)$class_id),
       'grid'=>$merged,
       'weekdays'=>$weekdays

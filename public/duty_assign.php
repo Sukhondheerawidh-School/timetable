@@ -32,6 +32,7 @@ $view = (string)($_GET['view'] ?? 'week');
 if ($view !== 'day' && $view !== 'week') $view = 'week';
 $day = (int)($_GET['day'] ?? (int)date('N'));
 if ($day < 1 || $day > 7) $day = 1;
+$include_loads = !empty($_GET['include_loads']) ? 1 : 0;
 
 // Master slots exist from periods
 tt_duty_master_sync_from_periods($pdo);
@@ -113,6 +114,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             LIMIT 1');
           $busyTeach->execute([$teacher_id, $year_id, $term_no, $day, $periodNo, $teacher_id]);
           if ($busyTeach->fetchColumn()) throw new Exception('ครูคนนี้มีสอนช่วงเวลานี้');
+
+          // activity busy
+          $busyAct = $pdo->prepare('SELECT ag.activity_name
+            FROM activity_teachers at2
+            JOIN activity_groups ag ON ag.id = at2.activity_id
+            WHERE at2.teacher_id=? AND ag.academic_year_id=? AND ag.term_no=?
+              AND ag.day_of_week=? AND ag.period_no=? AND ag.is_all_day=0
+            LIMIT 1');
+          $busyAct->execute([$teacher_id, $year_id, $term_no, $day, $periodNo]);
+          $actRow = $busyAct->fetch();
+          if ($actRow) throw new Exception('ครูคนนี้มีกิจกรรมช่วงเวลานี้ (กิจกรรม: '.htmlspecialchars($actRow['activity_name']).')');
 
           // teacher_constraints blocks teaching only, not duty assignments
         }
@@ -290,6 +302,19 @@ if ($periodList) {
     $d = (int)$r['day_of_week']; $p = (int)$r['period_no']; $t = (int)$r['teacher_id'];
     $busyCons[$d][$p][$t] = true;
   }
+
+  // From activity_teachers (non-all-day activities)
+  $q4 = 'SELECT ag.day_of_week, ag.period_no, at2.teacher_id
+         FROM activity_groups ag
+         JOIN activity_teachers at2 ON at2.activity_id = ag.id
+         WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.is_all_day=0
+           AND ag.day_of_week BETWEEN 1 AND 7 AND ag.period_no IN ('.$in.')';
+  $st4 = $pdo->prepare($q4);
+  $st4->execute($params);
+  while ($r = $st4->fetch(PDO::FETCH_ASSOC)) {
+    $d = (int)$r['day_of_week']; $p = (int)$r['period_no']; $t = (int)$r['teacher_id'];
+    $busyTeach[$d][$p][$t] = true;
+  }
 }
 
 // Duty busy (avoid double duty same slot/day)
@@ -333,6 +358,28 @@ $dcStmt = $pdo->prepare('SELECT teacher_id, COUNT(*) AS cnt
 $dcStmt->execute([$year_id, $term_no]);
 while ($r = $dcStmt->fetch(PDO::FETCH_ASSOC)) {
   $dutyCount[(int)$r['teacher_id']] = (int)$r['cnt'];
+}
+
+// Teaching load per teacher (for combined-score recommendation)
+$teachLoad = [];
+if ($include_loads) {
+  $tlStmt = $pdo->prepare('SELECT teacher_id, COUNT(*) AS cnt FROM (
+    SELECT teacher_id, day_of_week, period_no FROM timetable_slots
+    WHERE academic_year_id=? AND term_no=? AND teacher_id IS NOT NULL
+    UNION
+    SELECT tst.teacher_id, ts.day_of_week, ts.period_no
+    FROM timetable_slots ts JOIN timetable_slot_teachers tst ON tst.slot_id=ts.id
+    WHERE ts.academic_year_id=? AND ts.term_no=?
+    UNION
+    SELECT att.teacher_id, ag.day_of_week, ag.period_no
+    FROM activity_teachers att
+    JOIN activity_groups ag ON ag.id=att.activity_id
+    WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.is_all_day=0
+  ) sub GROUP BY teacher_id');
+  $tlStmt->execute([$year_id, $term_no, $year_id, $term_no, $year_id, $term_no]);
+  while ($r = $tlStmt->fetch(PDO::FETCH_ASSOC)) {
+    $teachLoad[(int)$r['teacher_id']] = (int)$r['cnt'];
+  }
 }
 
 // Group shifts by day+slot
@@ -381,6 +428,8 @@ foreach ($shifts as $sh) {
   foreach ($available as $t) {
     $tid = (int)$t['id'];
     $cnt = (int)($dutyCount[$tid] ?? 0);
+    $tload = $include_loads ? (int)($teachLoad[$tid] ?? 0) : 0;
+    $score = $cnt + $tload;
     $adj = 0; $adjNotes = [];
     if ($pPno !== null && $pPno > 0) {
       $prev = $pPno - 1; $next = $pPno + 1;
@@ -390,17 +439,17 @@ foreach ($shifts as $sh) {
       if ($hasNext) { $adj++; $adjNotes[] = 'มีสอนคาบ '.$next; }
       if ($pPno >= 4 && $pPno <= 6 && $adj === 1 && ($hasPrev xor $hasNext)) { $adj = 0; $adjNotes[] = 'คาบติดกันด้านเดียว'; }
     }
-    $scored[] = ['t' => $t, 'cnt' => $cnt, 'adj' => $adj, 'adjNotes' => $adjNotes];
+    $scored[] = ['t' => $t, 'cnt' => $cnt, 'tload' => $tload, 'score' => $score, 'adj' => $adj, 'adjNotes' => $adjNotes];
   }
   usort($scored, function($a, $b) {
     if ($a['adj'] !== $b['adj']) return $a['adj'] <=> $b['adj'];
-    if ($a['cnt'] !== $b['cnt']) return $a['cnt'] <=> $b['cnt'];
+    if ($a['score'] !== $b['score']) return $a['score'] <=> $b['score'];
     return $a['t']['teacher_code'] <=> $b['t']['teacher_code'];
   });
   $bestCnt = null;
   foreach ($scored as $rr) {
     if ((int)$rr['adj'] !== 0) continue;
-    $c = (int)$rr['cnt'];
+    $c = (int)$rr['score'];
     if ($bestCnt === null || $c < $bestCnt) $bestCnt = $c;
   }
   $presenterShifts[$shiftId] = [
@@ -417,24 +466,26 @@ foreach ($shifts as $sh) {
     }, $as),
     'teachers'  => array_map(function($r) use ($bestCnt) {
       $t = $r['t'];
-      $best = ((int)$r['adj'] === 0) && $bestCnt !== null && ((int)$r['cnt'] === $bestCnt);
+      $best = ((int)$r['adj'] === 0) && $bestCnt !== null && ((int)$r['score'] === $bestCnt);
       return ['id' => (int)$t['id'],
         'name' => ($t['teacher_code'] ? '['.$t['teacher_code'].'] ' : '').$t['first_name'].' '.$t['last_name'],
-        'cnt' => (int)$r['cnt'], 'adj' => (int)$r['adj'],
+        'cnt' => (int)$r['cnt'], 'tload' => (int)$r['tload'], 'score' => (int)$r['score'],
+        'adj' => (int)$r['adj'],
         'adjNotes' => $r['adjNotes'], 'best' => $best];
     }, $scored),
   ];
 }
 $pmJson = json_encode([
-  'csrf'        => csrf_token(),
-  'yearId'      => $year_id,
-  'termNo'      => $term_no,
-  'buildingId'  => $building_id,
-  'shifts'      => $presenterShifts,
-  'slots'       => array_values($slots),
-  'totalFilled' => $totalFilled,
-  'totalNeed'   => $totalNeed,
-  'progressPct' => $progressPct,
+  'csrf'         => csrf_token(),
+  'yearId'       => $year_id,
+  'termNo'       => $term_no,
+  'buildingId'   => $building_id,
+  'includeLoads' => (bool)$include_loads,
+  'shifts'       => $presenterShifts,
+  'slots'        => array_values($slots),
+  'totalFilled'  => $totalFilled,
+  'totalNeed'    => $totalNeed,
+  'progressPct'  => $progressPct,
 ], JSON_UNESCAPED_UNICODE);
 
 include __DIR__ . '/../partials/head.php';
@@ -524,6 +575,14 @@ include __DIR__ . '/../partials/navbar.php';
 
     <div class="md:col-span-12">
       <div class="text-xs text-slate-500">ครูที่มีสอน/ติดข้อจำกัด/ถูกละเว้นเวร (ช่วงเวลานั้น) จะไม่แสดงในรายการให้เลือก · ถ้ามีสอนคาบติดกันจะยังเลือกได้ และระบบจะพยายามจัดอันดับให้เหมาะสม</div>
+      <label class="inline-flex items-center gap-2 mt-2 cursor-pointer select-none">
+        <input type="checkbox" name="include_loads" value="1"
+          <?= $include_loads ? 'checked' : '' ?>
+          onchange="this.form.submit()"
+          class="w-4 h-4 rounded border-slate-300 text-sky-600 accent-sky-600">
+        <span class="text-xs text-slate-700 font-medium">รวมคาบสอนในการจัดอันดับ</span>
+        <span class="text-xs text-slate-400">(เปิด = นับเวร + คาบสอนรวมกัน เพื่อให้เห็นว่าใครภาระรวมน้อยที่สุด)</span>
+      </label>
     </div>
   </form>
 
@@ -623,6 +682,8 @@ include __DIR__ . '/../partials/navbar.php';
                           foreach ($available as $t) {
                             $tid = (int)$t['id'];
                             $cnt = (int)($dutyCount[$tid] ?? 0);
+                            $tload = $include_loads ? (int)($teachLoad[$tid] ?? 0) : 0;
+                            $score = $cnt + $tload;
                             $adj = 0;
                             $adjNotes = [];
                             if ($pno !== null && $pno > 0) {
@@ -648,12 +709,12 @@ include __DIR__ . '/../partials/navbar.php';
                               }
                             }
 
-                            $scored[] = ['t'=>$t, 'cnt'=>$cnt, 'adj'=>$adj, 'adjNotes'=>$adjNotes];
+                            $scored[] = ['t'=>$t, 'cnt'=>$cnt, 'tload'=>$tload, 'score'=>$score, 'adj'=>$adj, 'adjNotes'=>$adjNotes];
                           }
                           usort($scored, function($a,$b){
                             // Sort: no adjacent burdens first, then fewer burdens, then fewer duties, then teacher_code
                             if ($a['adj'] !== $b['adj']) return $a['adj'] <=> $b['adj'];
-                            if ($a['cnt'] !== $b['cnt']) return $a['cnt'] <=> $b['cnt'];
+                            if ($a['score'] !== $b['score']) return $a['score'] <=> $b['score'];
                             return $a['t']['teacher_code'] <=> $b['t']['teacher_code'];
                           });
                           $sortedTeachers = $scored;
@@ -717,7 +778,7 @@ include __DIR__ . '/../partials/navbar.php';
                                   $bestDutyCnt = null;
                                   foreach ($sortedTeachers as $rr) {
                                     if ((int)$rr['adj'] !== 0) continue;
-                                    $c = (int)$rr['cnt'];
+                                    $c = (int)$rr['score'];
                                     if ($bestDutyCnt === null || $c < $bestDutyCnt) $bestDutyCnt = $c;
                                   }
                                 ?>
@@ -729,8 +790,12 @@ include __DIR__ . '/../partials/navbar.php';
                                     if (!empty($r['adjNotes'])) {
                                       $notes[] = implode(', ', (array)$r['adjNotes']);
                                     }
-                                    $isBest = ((int)$r['adj'] === 0) && ($bestDutyCnt !== null) && ((int)$r['cnt'] === (int)$bestDutyCnt);
-                                    $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                    $isBest = ((int)$r['adj'] === 0) && ($bestDutyCnt !== null) && ((int)$r['score'] === (int)$bestDutyCnt);
+                                    if ($include_loads) {
+                                      $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร · สอน '.(int)$r['tload'].' คาบ'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                    } else {
+                                      $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                    }
                                     $prefix = $isBest ? '✓ ' : '';
                                     $label = $prefix.($t['teacher_code']? '['.$t['teacher_code'].'] ' : '').$t['first_name'].' '.$t['last_name'].$suffix;
                                   ?>
@@ -819,6 +884,8 @@ include __DIR__ . '/../partials/navbar.php';
                         foreach ($available as $t) {
                           $tid = (int)$t['id'];
                           $cnt = (int)($dutyCount[$tid] ?? 0);
+                          $tload = $include_loads ? (int)($teachLoad[$tid] ?? 0) : 0;
+                          $score = $cnt + $tload;
                           $adj = 0;
                           $adjNotes = [];
                           if ($pno !== null && $pno > 0) {
@@ -842,11 +909,11 @@ include __DIR__ . '/../partials/navbar.php';
                             }
                           }
 
-                          $scored[] = ['t'=>$t, 'cnt'=>$cnt, 'adj'=>$adj, 'adjNotes'=>$adjNotes];
+                          $scored[] = ['t'=>$t, 'cnt'=>$cnt, 'tload'=>$tload, 'score'=>$score, 'adj'=>$adj, 'adjNotes'=>$adjNotes];
                         }
                         usort($scored, function($a,$b){
                           if ($a['adj'] !== $b['adj']) return $a['adj'] <=> $b['adj'];
-                          if ($a['cnt'] !== $b['cnt']) return $a['cnt'] <=> $b['cnt'];
+                          if ($a['score'] !== $b['score']) return $a['score'] <=> $b['score'];
                           return $a['t']['teacher_code'] <=> $b['t']['teacher_code'];
                         });
                         $sortedTeachers = $scored;
@@ -910,7 +977,7 @@ include __DIR__ . '/../partials/navbar.php';
                                 $bestDutyCnt = null;
                                 foreach ($sortedTeachers as $rr) {
                                   if ((int)$rr['adj'] !== 0) continue;
-                                  $c = (int)$rr['cnt'];
+                                  $c = (int)$rr['score'];
                                   if ($bestDutyCnt === null || $c < $bestDutyCnt) $bestDutyCnt = $c;
                                 }
                               ?>
@@ -922,8 +989,12 @@ include __DIR__ . '/../partials/navbar.php';
                                   if (!empty($r['adjNotes'])) {
                                     $notes[] = implode(', ', (array)$r['adjNotes']);
                                   }
-                                  $isBest = ((int)$r['adj'] === 0) && ($bestDutyCnt !== null) && ((int)$r['cnt'] === (int)$bestDutyCnt);
-                                  $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                  $isBest = ((int)$r['adj'] === 0) && ($bestDutyCnt !== null) && ((int)$r['score'] === (int)$bestDutyCnt);
+                                  if ($include_loads) {
+                                    $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร · สอน '.(int)$r['tload'].' คาบ'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                  } else {
+                                    $suffix = ' (รับแล้ว '.(int)$r['cnt'].' เวร'.($notes ? ' · '.implode(' · ', $notes) : '').')';
+                                  }
                                   $prefix = $isBest ? '✓ ' : '';
                                   $label = $prefix.($t['teacher_code']? '['.$t['teacher_code'].'] ' : '').$t['first_name'].' '.$t['last_name'].$suffix;
                                 ?>
@@ -1410,11 +1481,11 @@ include __DIR__ . '/../partials/navbar.php';
               +';border-radius:14px;padding:16px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;"'
               +' onmouseover="this.style.opacity=\'0.82\'" onmouseout="this.style.opacity=\'1\'">';
             html += '<div style="width:42px;height:42px;border-radius:50%;background:#1e293b;border:2px solid '+border
-              +';display:flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:900;color:'+cntColor+';flex-shrink:0;">'+t.cnt+'</div>';
+              +';display:flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:900;color:'+cntColor+';flex-shrink:0;">'+(PM.includeLoads ? t.score : t.cnt)+'</div>';
             html += '<div style="flex:1;min-width:0;">';
             html += '<div style="font-size:1.05rem;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(t.name)+'</div>';
             html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'+badge
-              +'<span style="font-size:0.78rem;color:#64748b;">รับแล้ว '+t.cnt+' เวร</span></div>';
+              +'<span style="font-size:0.78rem;color:#64748b;">รับแล้ว '+t.cnt+' เวร'+(PM.includeLoads ? ' · สอน '+t.tload+' คาบ' : '')+'</span></div>';
             html += adjTxt + '</div></button></form></div>';
           });
           html += '</div>';

@@ -44,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } else {
     $grade = trim($_POST['grade_label'] ?? '');
     $section = (int)($_POST['section_no'] ?? 0);
+    $alias = trim($_POST['class_alias'] ?? '');
     $room_id = (int)($_POST['homeroom_room_id'] ?? 0);
     $sel_teachers = array_filter(array_map('intval', (array)($_POST['teacher_ids'] ?? [])));
 
@@ -64,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmtChk->execute([$grade, $section, $id]);
         if ($stmtChk->fetch()) throw new Exception('ชั้น/ห้องนี้มีอยู่แล้ว');
 
-        $stmtU = $pdo->prepare('UPDATE classes SET grade_label=?, section_no=?, class_name=?, homeroom_room_id=? WHERE id=?');
-        $stmtU->execute([$grade, $section, $class_name, $room_id, $id]);
+        $stmtU = $pdo->prepare('UPDATE classes SET grade_label=?, section_no=?, class_name=?, class_alias=?, homeroom_room_id=? WHERE id=?');
+        $stmtU->execute([$grade, $section, $class_name, $alias !== '' ? $alias : null, $room_id, $id]);
 
         // อัปเดตครูประจำชั้น: ลบเก่า→ใส่ใหม่
         $pdo->prepare('DELETE FROM class_teachers WHERE class_id=?')->execute([$id]);
@@ -110,8 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">ชั้น/ห้อง</label>
         <input class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 text-slate-500 outline-none text-sm" disabled value="<?=
-          htmlspecialchars( (($_POST['grade_label'] ?? $class['grade_label']).'/'.($_POST['section_no'] ?? $class['section_no'])) ); ?>">
+          htmlspecialchars( (($_POST['grade_label'] ?? $class['grade_label']).'/'.($_POST['section_no'] ?? $class['section_no'])) ); ?>"> 
       </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อห้อง (Alias) <span class="text-xs font-normal text-slate-400">- ไม่จำเป็นต้องใส่</span></label>
+      <input name="class_alias" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น อนุบาล 1/มะลิ ​→ ​ใส่ มะลิ" value="<?= htmlspecialchars($_POST['class_alias'] ?? $class['class_alias'] ?? ''); ?>">
+      <p class="text-xs text-slate-500 mt-1">ชื่อนี้จะใช้แทนชื่อห้องปกติเมื่อพิมพ์รายงาน</p>
     </div>
 
     <div>

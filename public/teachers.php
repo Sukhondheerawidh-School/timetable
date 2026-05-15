@@ -9,6 +9,12 @@ requireAdmin();
 $kw    = trim($_GET['q'] ?? '');
 $group = (isset($_GET['group']) && $_GET['group'] !== '') ? (int)$_GET['group'] : null;
 
+// query string ที่จะส่งกลับมาหลังแก้ไข/ลบ
+$_filter_parts = [];
+if ($kw !== '') $_filter_parts['q'] = $kw;
+if ($group !== null) $_filter_parts['group'] = $group;
+$_filter_qs = $_filter_parts ? '?' . http_build_query($_filter_parts) : '';
+
 // สร้าง SQL + เงื่อนไข
 $sql = 'SELECT id, teacher_code, title, first_name, last_name, subject_group, created_at
         FROM teachers WHERE 1=1';
@@ -138,13 +144,15 @@ $groupLabels = teacher_group_options();
           <td class="px-4 py-4 text-slate-600 text-xs"><?= th_date($t['created_at']); ?></td>
           <td class="px-4 py-4 text-right">
             <div class="flex items-center justify-end gap-2">
-              <a href="<?= url('teacher_edit.php?id='.(int)$t['id']); ?>" 
+              <a href="<?= url('teacher_edit.php?id='.(int)$t['id'].(($kw!=='')?'&from_q='.urlencode($kw):'').(($group!==null)?'&from_group='.(int)$group:'')); ?>" 
                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors">
                 ✏️ แก้ไข
               </a>
               <form action="<?= url('teacher_delete.php'); ?>" method="post" class="inline" onsubmit="return ttConfirmSubmit(this,{text:'ยืนยันลบครูคนนี้?'});">
                 <input type="hidden" name="csrf" value="<?= csrf_token(); ?>">
                 <input type="hidden" name="id" value="<?= (int)$t['id']; ?>">
+                <?php if ($kw !== ''): ?><input type="hidden" name="from_q" value="<?= htmlspecialchars($kw); ?>"><?php endif; ?>
+                <?php if ($group !== null): ?><input type="hidden" name="from_group" value="<?= (int)$group; ?>"><?php endif; ?>
                 <button class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors">
                   🗑️ ลบ
                 </button>

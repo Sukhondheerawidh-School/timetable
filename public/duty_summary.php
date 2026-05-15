@@ -22,6 +22,7 @@ $term_no = isset($_GET['term_no']) && $_GET['term_no'] !== ''
   ? (int)$_GET['term_no']
   : tt_default_term_no_for_year($pdo, $year_id);
 $term_no = tt_validate_term_no($pdo, $year_id, $term_no);
+$view_mode = (($_GET['view_mode'] ?? '') === 'week') ? 'week' : 'teacher';
 
 // Ensure master slots exist (templates depend on this)
 tt_duty_master_sync_from_periods($pdo);
@@ -117,6 +118,60 @@ $totalAssigned    = array_sum(array_column($rows, 'duty_cnt'));
 $teachersWithDuty = count(array_filter($rows, fn($r) => (int)$r['duty_cnt'] > 0));
 $maxDuty = $rows ? (int)$rows[0]['duty_cnt'] : 0; // sorted DESC
 
+// ── Week grid data ─────────────────────────────────────────────────────
+$weekSql = 'SELECT
+    mts.sort_order AS slot_sort, mts.slot_label, mts.period_no, mts.start_time, mts.end_time,
+    ms.id AS shift_id, ms.day_of_week, ms.required_count,
+    mp.post_name,
+    t.teacher_code, t.first_name, t.last_name
+  FROM duty_master_time_slots mts
+  JOIN duty_master_shifts ms ON ms.duty_time_slot_id = mts.id AND ms.is_active = 1
+  JOIN duty_master_posts mp ON mp.id = ms.duty_post_id AND mp.is_active = 1
+  LEFT JOIN duty_term_assignments ta ON ta.duty_master_shift_id = ms.id
+    AND ta.academic_year_id = ? AND ta.term_no = ?
+    AND NOT EXISTS (
+      SELECT 1 FROM duty_term_exclusions e
+      WHERE e.academic_year_id = ta.academic_year_id AND e.term_no = ta.term_no AND e.teacher_id = ta.teacher_id
+    )
+  LEFT JOIN teachers t ON t.id = ta.teacher_id
+  WHERE mts.is_active = 1';
+$weekParams = [$year_id, $term_no];
+if ($building_id > 0) { $weekSql .= ' AND mp.building_id = ?'; $weekParams[] = $building_id; }
+if ($post_id > 0)     { $weekSql .= ' AND mp.id = ?';          $weekParams[] = $post_id; }
+$weekSql .= ' ORDER BY mts.sort_order, mts.start_time, ms.day_of_week, mp.sort_order, mp.post_name, t.teacher_code, t.first_name';
+$weekStmt = $pdo->prepare($weekSql);
+$weekStmt->execute($weekParams);
+
+$weekGrid  = []; // slot_key => [meta + days[dow][shift_id]]
+$weekSlots = []; // ordered slot keys
+while ($wr = $weekStmt->fetch(PDO::FETCH_ASSOC)) {
+  $sk = (int)$wr['slot_sort'].'_'.(string)$wr['start_time'];
+  if (!isset($weekGrid[$sk])) {
+    $weekGrid[$sk] = [
+      'slot_label' => $wr['slot_label'],
+      'period_no'  => $wr['period_no'],
+      'start_time' => $wr['start_time'],
+      'end_time'   => $wr['end_time'],
+      'days'       => [],
+    ];
+    $weekSlots[] = $sk;
+  }
+  $dow = (int)$wr['day_of_week'];
+  $sid = (int)$wr['shift_id'];
+  if (!isset($weekGrid[$sk]['days'][$dow])) $weekGrid[$sk]['days'][$dow] = [];
+  if (!isset($weekGrid[$sk]['days'][$dow][$sid])) {
+    $weekGrid[$sk]['days'][$dow][$sid] = [
+      'post_name'      => $wr['post_name'],
+      'required_count' => (int)$wr['required_count'],
+      'teachers'       => [],
+    ];
+  }
+  if ($wr['first_name'] !== null) {
+    $weekGrid[$sk]['days'][$dow][$sid]['teachers'][] =
+      trim(($wr['teacher_code'] ? $wr['teacher_code'].' ' : '').$wr['first_name'].' '.$wr['last_name']);
+  }
+}
+
 include __DIR__ . '/../partials/head.php';
 include __DIR__ . '/../partials/navbar.php';
 ?>
@@ -129,7 +184,18 @@ include __DIR__ . '/../partials/navbar.php';
       <p class="text-sm text-slate-500 mt-1">ภาพรวมการรับเวรของครูแต่ละคนในเทอมนี้</p>
     </div>
     <?php $reportQs = 'year_id='.$year_id.'&term_no='.$term_no.($building_id>0?'&building_id='.$building_id:'').($post_id>0?'&post_id='.$post_id:''); ?>
-    <div class="flex gap-2 flex-wrap">
+    <?php $baseQs   = $reportQs; ?>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- View toggle -->
+      <a href="<?= url('duty_summary.php?'.$baseQs.'&view_mode=teacher') ?>"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition <?= $view_mode==='teacher' ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700' ?>">
+        👤 รายครู
+      </a>
+      <a href="<?= url('duty_summary.php?'.$baseQs.'&view_mode=week') ?>"
+         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition <?= $view_mode==='week' ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700' ?>">
+        📅 รายสัปดาห์
+      </a>
+      <div class="w-px h-5 bg-slate-200"></div>
       <a target="_blank" rel="noopener" href="<?= url('duty_summary_report.php?'.$reportQs) ?>"
          class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium shadow-sm transition">
         🖨 รายงานเวร
@@ -150,6 +216,7 @@ include __DIR__ . '/../partials/navbar.php';
 
   <!-- Filter bar -->
   <form method="get" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-5">
+    <input type="hidden" name="view_mode" value="<?= htmlspecialchars($view_mode) ?>">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <div>
         <label class="block text-xs font-semibold text-slate-500 mb-1.5">ปีการศึกษา</label>
@@ -188,6 +255,7 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
   </form>
 
+  <?php if ($view_mode === 'teacher'): ?>
   <!-- Summary cards -->
   <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
@@ -290,6 +358,85 @@ include __DIR__ . '/../partials/navbar.php';
     </div>
     <?php endif; ?>
   </div>
+  <?php endif; /* view_mode === teacher */ ?>
+
+  <?php if ($view_mode === 'week'): ?>
+  <!-- Week grid table -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+      <span class="font-semibold text-slate-800">ตารางเวรรายสัปดาห์</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400">แสดงทุกจุดเวร · สีเทา = ยังไม่มีครู</span>
+        <a target="_blank" rel="noopener"
+           href="<?= url('duty_week_report.php?'.$reportQs) ?>"
+           class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 shadow-sm transition">
+          🖨 พิมพ์รายงาน
+        </a>
+      </div>
+    </div>
+    <?php if (!$weekSlots): ?>
+      <div class="px-5 py-12 text-center text-slate-400 text-sm">— ยังไม่มีข้อมูลเวรในเทอมนี้ —</div>
+    <?php else: ?>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-slate-50">
+            <th class="text-left px-4 py-3 font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap min-w-[130px]">คาบ / เวลา</th>
+            <?php foreach ([1=>'จันทร์',2=>'อังคาร',3=>'พุธ',4=>'พฤหัสบดี',5=>'ศุกร์'] as $dow => $dlabel): ?>
+              <th class="text-center px-4 py-3 font-semibold text-slate-600 border-b border-r border-slate-200 whitespace-nowrap min-w-[120px]"><?= $dlabel ?></th>
+            <?php endforeach; ?>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($weekSlots as $sk): ?>
+            <?php $sg = $weekGrid[$sk]; ?>
+            <tr class="border-b border-slate-100 align-top hover:bg-slate-50/60 transition-colors">
+              <!-- คาบ/เวลา -->
+              <td class="px-4 py-3 border-r border-slate-100 whitespace-nowrap align-middle">
+                <?php
+                  $pno = $sg['period_no'];
+                  $st  = substr((string)$sg['start_time'], 0, 5);
+                  $et  = substr((string)$sg['end_time'],   0, 5);
+                  $stDot = str_replace(':', '.', $st);
+                  $etDot = str_replace(':', '.', $et);
+                ?>
+                <div class="font-semibold text-slate-700 text-sm">
+                  <?php if ($pno !== null): ?>คาบ <?= (int)$pno ?><?php else: ?><?= htmlspecialchars((string)$sg['slot_label']) ?><?php endif; ?>
+                </div>
+                <div class="text-xs text-slate-400 mt-0.5"><?= $stDot ?> – <?= $etDot ?></div>
+              </td>
+              <!-- จันทร์–ศุกร์ -->
+              <?php foreach ([1,2,3,4,5] as $dow): ?>
+                <td class="px-3 py-2 border-r border-slate-100 align-top text-xs">
+                  <?php $shifts = $sg['days'][$dow] ?? []; ?>
+                  <?php if ($shifts): ?>
+                    <div class="space-y-2">
+                      <?php foreach ($shifts as $sd): ?>
+                        <div class="leading-relaxed">
+                          <span class="font-semibold text-slate-700"><?= htmlspecialchars($sd['post_name']) ?></span>
+                          <?php if ($sd['teachers']): ?>
+                            <?php foreach ($sd['teachers'] as $tn): ?>
+                              <div class="text-slate-600 pl-1"><?= htmlspecialchars($tn) ?></div>
+                            <?php endforeach; ?>
+                          <?php else: ?>
+                            <div class="text-slate-300 italic pl-1">(ว่าง <?= $sd['required_count'] ?> คน)</div>
+                          <?php endif; ?>
+                        </div>
+                      <?php endforeach; ?>
+                    </div>
+                  <?php else: ?>
+                    <span class="text-slate-200">—</span>
+                  <?php endif; ?>
+                </td>
+              <?php endforeach; ?>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+  </div>
+  <?php endif; /* view_mode === week */ ?>
 
 </div>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

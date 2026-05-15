@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 /** ดึงรายการชั้นเรียน: เรียงตาม grade_label แล้วต่อด้วย section_no */
 $sql = <<<SQL
 SELECT
-  c.id, c.grade_label, c.section_no, c.class_name,
+  c.id, c.grade_label, c.section_no, c.class_name, c.class_alias,
   c.homeroom_room_id, c.created_at, r.room_name
 FROM classes c
 LEFT JOIN rooms r ON r.id = c.homeroom_room_id
@@ -96,6 +96,7 @@ $classes = $stmt->fetchAll();
       <thead class="bg-slate-50">
         <tr>
           <th class="text-left px-4 py-3">ชั้น/ห้อง</th>
+          <th class="text-left px-4 py-3">ชื่อห้อง (Alias)</th>
           <th class="text-left px-4 py-3">ห้องเรียนประจำ</th>
           <th class="text-left px-4 py-3">ครูประจำชั้น (สูงสุด 4)</th>
           <th class="text-left px-4 py-3">สร้างเมื่อ</th>
@@ -117,6 +118,13 @@ $classes = $stmt->fetchAll();
           ?>
           <tr class="border-t">
             <td class="px-4 py-3 font-medium"><?= htmlspecialchars($c['class_name']); ?></td>
+            <td class="px-4 py-3">
+              <?php if (!empty($c['class_alias'])): ?>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-xs font-medium"><?= htmlspecialchars($c['class_alias']); ?></span>
+              <?php else: ?>
+                <span class="text-slate-300 text-xs">—</span>
+              <?php endif; ?>
+            </td>
             <td class="px-4 py-3"><?= htmlspecialchars($c['room_name'] ?? '—'); ?></td>
             <td class="px-4 py-3">
               <?php if ($ts): ?>
@@ -141,7 +149,7 @@ $classes = $stmt->fetchAll();
           </tr>
         <?php endforeach; ?>
         <?php if (!$classes): ?>
-          <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">ยังไม่มีชั้นเรียน</td></tr>
+          <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">ยังไม่มีชั้นเรียน</td></tr>
         <?php endif; ?>
       </tbody>
     </table>

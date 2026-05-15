@@ -1,3 +1,7 @@
+<?php
+// ล้าง buffer (PHP notices ที่อาจหลุดออกมาก่อน HTML)
+if (ob_get_level() > 0) { ob_end_clean(); }
+?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -6,12 +10,19 @@
   <title><?= $pageTitle ?? 'ระบบจัดตารางสอน'; ?></title>
   <link rel="icon" type="image/png" href="<?= url('assets/logo-web.png?v=20260219'); ?>">
   <link rel="shortcut icon" type="image/png" href="<?= url('assets/logo-web.png?v=20260219'); ?>">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind: โหลด local ก่อน ถ้าไม่มีค่อย fallback CDN -->
+  <script src="<?= url('assets/vendor/tailwind.min.js?v=20260514'); ?>"></script>
+  <script>
+    if (typeof tailwind === 'undefined') {
+      document.write('<scr'+'ipt src="https://cdn.tailwindcss.com"><\/scr'+'ipt>');
+    }
+  </script>
   <!-- SweetAlert2: โหลด local ก่อน ถ้าไม่มีค่อย fallback CDN (ป้องกัน CSS โหลดซ้ำ) -->
   <link rel="stylesheet" href="<?= url('assets/vendor/sweetalert2/sweetalert2.min.css?v=20260219'); ?>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Google Fonts: async โหลดเพื่อไม่ให้ block rendering -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap"></noscript>
   <style>
     body { font-family: 'Sarabun', sans-serif; }
     /* 🎨 Custom Color Palette */

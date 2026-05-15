@@ -115,15 +115,14 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
     $class_ids   = array_map('intval', (array)($_POST['class_ids'] ?? []));
     $teacher_ids = array_map('intval', (array)($_POST['teacher_ids'] ?? []));
 
-    // For all-day activities, teacher is optional; for regular, teacher is required
-    $validTeachers = $is_all_day ? true : !empty($teacher_ids);
+    // Teacher is optional for all activity types
     $validPeriod = $is_all_day ? true : $pno !== null;
 
-    if(!$year_id || !$term_no || $name==='' || !$dow || !$class_ids || !$validTeachers || !$validPeriod){
+    if(!$year_id || !$term_no || $name==='' || !$dow || !$class_ids || !$validPeriod){
       if ($is_all_day) {
-        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/ชั้น) - ครูเป็นตัวเลือก';
+        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/ชั้น)';
       } else {
-        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/คาบ/ชั้น/ครู)';
+        $err='กรอกข้อมูลให้ครบ (ปี/เทอม/ชื่อกิจกรรม/วัน/คาบ/ชั้น) - ครูเป็นตัวเลือก';
       }
     }else{
       try{
@@ -337,7 +336,7 @@ $err=''; if($_SERVER['REQUEST_METHOD']==='POST'){
 
     <!-- ✅ ครู - แบบเช็กบ็อกซ์ + ค้นหา (ลอกจากหน้า create) -->
     <div id="teacher-field">
-      <label class="block text-sm font-semibold text-slate-700 mb-1.5">ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span></label>
+      <label class="block text-sm font-semibold text-slate-700 mb-1.5">ครูผู้สอน (เลือกได้หลายคน) <span class="text-slate-500 text-xs font-normal">- ไม่จำเป็นต้องใส่ครู</span></label>
 
       <!-- ช่องค้นหา -->
       <input 
@@ -531,7 +530,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
       periodField.style.display = 'block';
       periodSelect.setAttribute('required', 'required');
-      teacherField.querySelector('label').innerHTML = 'ครูผู้สอน (เลือกได้หลายคน) <span class="text-red-500">*</span>';
+      teacherField.querySelector('label').innerHTML = 'ครูผู้สอน (เลือกได้หลายคน) <span class="text-slate-500 text-xs font-normal">- ไม่จำเป็นต้องใส่ครู</span>';
     }
   }
 

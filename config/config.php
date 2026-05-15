@@ -1,4 +1,7 @@
 <?php
+// Buffer output ตั้งแต่ต้น เพื่อป้องกัน PHP notice/warning รั่วออกมาก่อน DOCTYPE
+ob_start();
+
 // Base URL ของเว็บ (ซ่อน /public ด้วย .htaccess)
 // ตั้งค่าได้ 2 แบบ:
 // 1) แนะนำ (prod): ตั้ง env var `TT_BASE_URL` เช่น "/" หรือ "/timetable"
@@ -29,7 +32,7 @@ $__ttDbDriver = (string)(getenv('TT_DB_DRIVER') ?: 'mysql');
 $__ttDbHost = (string)(getenv('TT_DB_HOST') ?: '127.0.0.1');
 $__ttDbName = (string)(getenv('TT_DB_NAME') ?: 'timetable_app');
 $__ttDbUser = (string)(getenv('TT_DB_USER') ?: 'root');
-$__ttDbPass = (string)(getenv('TT_DB_PASS') ?: ''); 
+$__ttDbPass = (string)(getenv('TT_DB_PASS') ?: 'PowerApps'); 
 
 define('DB_DRIVER', $__ttDbDriver);
 define('DB_HOST', $__ttDbHost);

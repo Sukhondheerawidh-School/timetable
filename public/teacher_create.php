@@ -76,16 +76,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-slate-700 mb-1.5">อาคารที่ไปประกฎ (เลือกได้ไม่เกิน 2)</label>
-      <select name="building_ids[]" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" multiple size="<?= max(3, min(6, count($buildings))); ?>">
-        <?php $selB = array_map('intval', (array)($_POST['building_ids'] ?? [])); ?>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">อาคารที่ประจำ (เลือกได้ไม่เกิน 2 · ไม่ต้องเลือกก็ได้)</label>
+      <?php $selB = array_map('intval', (array)($_POST['building_ids'] ?? [])); ?>
+      <?php if (empty($buildings)): ?>
+        <div class="text-xs text-slate-400">— ยังไม่มีอาคาร —</div>
+      <?php else: ?>
+      <div class="flex flex-wrap gap-3">
         <?php foreach ($buildings as $b): ?>
-          <option value="<?= (int)$b['id']; ?>" <?= in_array((int)$b['id'], $selB, true) ? 'selected' : ''; ?>>
-            <?= htmlspecialchars((string)$b['building_name']); ?>
-          </option>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" name="building_ids[]" value="<?= (int)$b['id']; ?>"
+              <?= in_array((int)$b['id'], $selB, true) ? 'checked' : ''; ?>
+              class="w-4 h-4 rounded border-slate-300 accent-indigo-600">
+            <span class="text-sm text-slate-700"><?= htmlspecialchars((string)$b['building_name']); ?></span>
+          </label>
         <?php endforeach; ?>
-      </select>
-      <div class="text-xs text-slate-500 mt-1">กด Ctrl/Command เพื่อเลือกหลายรายการ</div>
+      </div>
+      <?php endif; ?>
+      <div class="text-xs text-slate-500 mt-1">ถ้าไม่ประจำอาคารใด ไม่ต้องติ๊กก็ได้</div>
     </div>
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">คำนำหน้า</label>

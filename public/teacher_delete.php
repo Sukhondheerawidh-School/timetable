@@ -29,4 +29,10 @@ try {
 } catch (Throwable $e) {
   flash_set('error', 'ลบไม่สำเร็จ: '.$e->getMessage());
 }
-redirect('teachers.php');
+$_from_q     = trim($_POST['from_q']     ?? '');
+$_from_group = trim($_POST['from_group'] ?? '');
+$_back_parts = [];
+if ($_from_q !== '') $_back_parts['q'] = $_from_q;
+if ($_from_group !== '') $_back_parts['group'] = (int)$_from_group;
+$_back_qs = $_back_parts ? '?' . http_build_query($_back_parts) : '';
+redirect('teachers.php'.$_back_qs);
