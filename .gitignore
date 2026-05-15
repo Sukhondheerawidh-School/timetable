@@ -1,0 +1,19 @@
+# Environment & secrets
+.env
+.env.local
+config/local.php
+
+# Database backups
+backups/
+
+# PHP dependencies
+vendor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
