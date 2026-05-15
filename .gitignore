@@ -6,6 +6,12 @@ config/local.php
 # Database backups
 backups/
 
+# Debug / one-off scripts (อย่า expose ไว้บน GitHub)
+scripts/
+
+# Build/migration output
+migration_result.html
+
 # PHP dependencies
 vendor/
 

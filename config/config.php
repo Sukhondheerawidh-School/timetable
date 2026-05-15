@@ -2,6 +2,25 @@
 // Buffer output ตั้งแต่ต้น เพื่อป้องกัน PHP notice/warning รั่วออกมาก่อน DOCTYPE
 ob_start();
 
+// โหลดไฟล์ .env ถ้ามี (สำหรับ local development)
+$__envFile = dirname(__DIR__) . '/.env';
+if (is_file($__envFile)) {
+    $__lines = file($__envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($__lines as $__line) {
+        $__line = trim($__line);
+        if ($__line === '' || $__line[0] === '#') continue;
+        if (strpos($__line, '=') === false) continue;
+        [$__key, $__val] = explode('=', $__line, 2);
+        $__key = trim($__key);
+        $__val = trim($__val);
+        if ($__key !== '' && !getenv($__key)) {
+            putenv("$__key=$__val");
+        }
+    }
+    unset($__lines, $__line, $__key, $__val);
+}
+unset($__envFile);
+
 // Base URL ของเว็บ (ซ่อน /public ด้วย .htaccess)
 // ตั้งค่าได้ 2 แบบ:
 // 1) แนะนำ (prod): ตั้ง env var `TT_BASE_URL` เช่น "/" หรือ "/timetable"
@@ -27,11 +46,10 @@ define('BASE_URL', $__ttBaseUrl);
 // DB
 // แนะนำ: ตั้งค่าเป็น Environment Variables แทนการเขียน user/pass ลงไฟล์
 // - TT_DB_HOST, TT_DB_NAME, TT_DB_USER, TT_DB_PASS
-// (ใน XAMPP/Apache สามารถตั้งผ่าน httpd.conf / vhost ด้วย SetEnv)
-$__ttDbDriver = (string)(getenv('TT_DB_DRIVER') ?: 'mysql');
-$__ttDbHost = (string)(getenv('TT_DB_HOST') ?: '127.0.0.1');
-$__ttDbName = (string)(getenv('TT_DB_NAME') ?: 'timetable_app');
-$__ttDbUser = (string)(getenv('TT_DB_USER') ?: 'root');
+$__ttDbDriver = (string)(getenv('TT_DB_DRIVER') ?: '');
+$__ttDbHost = (string)(getenv('TT_DB_HOST') ?: '');
+$__ttDbName = (string)(getenv('TT_DB_NAME') ?: '');
+$__ttDbUser = (string)(getenv('TT_DB_USER') ?: '');
 $__ttDbPass = (string)(getenv('TT_DB_PASS') ?: '');
 
 define('DB_DRIVER', $__ttDbDriver);
