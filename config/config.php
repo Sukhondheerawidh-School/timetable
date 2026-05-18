@@ -58,14 +58,16 @@ define('DB_NAME', $__ttDbName);
 define('DB_USER', $__ttDbUser);
 define('DB_PASS', $__ttDbPass);
 
-// ตั้งค่า session
-ini_set('session.cookie_httponly', 1);
-// เปิด secure cookie เฉพาะเมื่อเชื่อมต่อผ่าน HTTPS
-if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-  ini_set('session.cookie_secure', 1);
+// ตั้งค่า session - ข้ามหากถูก start ไปแล้ว (เช่น session.auto_start = 1 ใน php.ini)
+if (session_status() === PHP_SESSION_NONE) {
+  ini_set('session.cookie_httponly', 1);
+  // เปิด secure cookie เฉพาะเมื่อเชื่อมต่อผ่าน HTTPS
+  if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+    ini_set('session.cookie_secure', 1);
+  }
+  session_name('tt_sess');
+  session_start();
 }
-session_name('tt_sess');
-session_start();
 
 // timezone
 date_default_timezone_set('Asia/Bangkok');
