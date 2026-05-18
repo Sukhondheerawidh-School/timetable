@@ -1,0 +1,26 @@
+services:
+  timetable-app:
+    build: .
+    container_name: timetable-app
+    ports:
+      - "8080:80"
+    volumes:
+      - /home/sukhon_server/timetable/.env:/var/www/html/.env
+    depends_on:
+      - timetable-db
+    restart: always
+
+  timetable-db:
+    image: mysql:8
+    container_name: timetable-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: School1234
+      MYSQL_DATABASE: timetable
+      MYSQL_USER: timetable_user
+      MYSQL_PASSWORD: School1234
+    volumes:
+      - timetable_db_data:/var/lib/mysql
+
+volumes:
+  timetable_db_data:
