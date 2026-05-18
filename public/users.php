@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // public/users.php  (หรือ user.php ถ้าคุณใช้ชื่อเดิม)
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';

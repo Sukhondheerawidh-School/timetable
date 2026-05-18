@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // filepath: c:\xampp\htdocs\timetable\public\timetable_auto_run.php
 // กัน whitespace/warning ทำลาย JSON
 ob_start();

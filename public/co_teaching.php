@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // public/co_teaching.php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';

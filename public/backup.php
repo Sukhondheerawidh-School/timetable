@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // filepath: c:\xampp\htdocs\timetable\public\backup.php
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
