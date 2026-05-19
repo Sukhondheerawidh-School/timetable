@@ -21,6 +21,15 @@ services:
       MYSQL_PASSWORD: School1234
     volumes:
       - timetable_db_data:/var/lib/mysql
-
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: timetable-phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: timetable-db
+    depends_on:
+      - timetable-db
 volumes:
   timetable_db_data:
