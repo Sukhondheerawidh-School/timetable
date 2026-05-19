@@ -285,6 +285,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $chkDup  =$pdo->prepare('SELECT id FROM timetable_slots WHERE academic_year_id=? AND term_no=? AND day_of_week=? AND period_no=? AND class_id=? LIMIT 1');
         $chkCons=$pdo->prepare('SELECT 1 FROM teacher_constraints WHERE teacher_id=? AND academic_year_id=? AND term_no=? AND day_of_week=? AND period_no=? LIMIT 1');
         $chkTT  =$pdo->prepare('SELECT 1 FROM timetable_slots ts WHERE ts.academic_year_id=? AND ts.term_no=? AND ts.day_of_week=? AND ts.period_no=? AND ts.teacher_id=? LIMIT 1');
+        $chkRoom=$pdo->prepare('SELECT ts.subject_name, c.class_name FROM timetable_slots ts JOIN classes c ON c.id=ts.class_id WHERE ts.academic_year_id=? AND ts.term_no=? AND ts.day_of_week=? AND ts.period_no=? AND ts.room_id=? LIMIT 1');
         $chkActT=$pdo->prepare('SELECT 1
                                 FROM activity_groups ag JOIN activity_teachers at ON at.activity_id=ag.id
                                 WHERE ag.academic_year_id=? AND ag.term_no=? AND ag.day_of_week=? AND ag.period_no=? AND at.teacher_id=? LIMIT 1');
@@ -438,6 +439,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           
           $chkBreak->execute([$grade,$pp]); if ($chkBreak->fetch()) throw new Exception('คาบที่เลือกติดคาบพัก');
           $chkDup  ->execute([$year_id,$term_no,$day,$pp,$class_of]); if ($chkDup->fetch()) throw new Exception('มีคาบในช่องนี้อยู่แล้ว');
+
+          // ✅ ตรวจสอบห้องชน (เฉพาะเมื่อเลือกห้องเฉพาะเจาะจง เช่น ห้อง Lab)
+          if ($room_id_to_use) {
+            $chkRoom->execute([$year_id,$term_no,$day,$pp,$room_id_to_use]);
+            if ($rc = $chkRoom->fetch()) {
+              $rName = $rooms[$room_id_to_use] ?? ('ห้อง #'.$room_id_to_use);
+              throw new Exception('ห้องชนกัน! ห้อง "'.$rName.'" คาบ '.$pp.' ถูกใช้โดยห้อง '.$rc['class_name'].' (วิชา '.$rc['subject_name'].') อยู่แล้ว');
+            }
+          }
 
           foreach ($teacher_ids as $tid) {
             $chkTT->execute([$year_id,$term_no,$day,$pp,$tid]);  if ($chkTT->fetch())  throw new Exception('ครูติดคาบช่วงนี้');

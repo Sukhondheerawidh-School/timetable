@@ -26,7 +26,7 @@ $anyLocked = $editingLocked || !empty($lockedSectionLabels);
 $settingsFiles = ['teachers.php','subject_groups.php','years.php','periods.php','subjects.php','rooms.php','classes.php','class_weekends.php'];
 $systemFiles   = ['activity_logs.php','backup.php'];
 $planFiles     = ['activities.php','loads.php','teacher_constraints.php'];
-$dutyFiles     = ['duty_assign.php','duty_summary.php','duty_exclusions.php','duty_summary_report.php','duty_slots.php','duty_posts.php','duty_shifts.php','buildings.php','teacher_buildings.php','shift.php'];
+$dutyFiles     = ['duty_assign.php','duty_summary.php','duty_exclusions.php','duty_summary_report.php','duty_slots.php','duty_posts.php','duty_shifts.php','buildings.php','teacher_buildings.php','shift.php','shift_holiday.php'];
 $timetableFiles= ['co_teaching.php','timetable.php'];
 $reportFiles   = ['report.php'];
 $superFiles    = ['superuser_settings.php'];
@@ -240,7 +240,11 @@ $openSuper     = $isSuperuser && group_open($superFiles, $path);
         <div class="tt-nav-links mt-1 pl-2 border-l border-slate-200 space-y-1">
           <a href="<?= url('shift.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('shift.php', $path); ?>">
             <span class="text-lg">🗓️</span>
-            <span>เวรวันหยุด</span>
+            <span>เวรวันหยุดปกติ</span>
+          </a>
+          <a href="<?= url('shift_holiday.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('shift_holiday.php', $path); ?>">
+            <span class="text-lg">🎌</span>
+            <span>เวรวันหยุดนักขัตฤกษ์</span>
           </a>
           <a href="<?= url('duty_assign.php'); ?>" class="tt-nav-item flex items-center gap-3 px-3 py-2 rounded-xl <?= active_cls('duty_assign.php', $path); ?>">
             <span class="text-lg">🧑‍🏫</span>

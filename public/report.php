@@ -1963,6 +1963,10 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
           class="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
           📋 ตารางเปล่า
         </button>
+        <button type="button" onclick="openSaturdaySupplement()"
+          class="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition shadow-sm">
+          📅 เรียนเสริม ป-ม.ต้น
+        </button>
         <a href="<?= h($_SERVER['PHP_SELF']) ?>"
           class="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-sm font-medium rounded-xl transition">
           ↺ ล้างค่า
@@ -2016,6 +2020,15 @@ $isAdmin = isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'ad
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 
 <script>
+function openSaturdaySupplement() {
+  const form = document.getElementById('filterForm');
+  const data = new FormData(form);
+  const keys = ['year_id','term_no','school_name','year_text','term_text','printed_at','director_name','director_date'];
+  const params = new URLSearchParams();
+  keys.forEach(k => { const v = data.get(k); if (v !== null && v !== '') params.set(k, v); });
+  window.open('report_saturday_supplement.php?' + params.toString(), '_blank');
+}
+
 (function(){
   // ✅ แสดง toast เมื่อบันทึกหัวกระดาษสำเร็จ
   <?php if (isset($_GET['__saved'])): ?>
