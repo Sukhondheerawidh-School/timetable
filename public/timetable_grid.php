@@ -10,7 +10,8 @@ require_once __DIR__ . '/../app/db.php';
 
 requireLogin();
 
-$canEdit = canEditSection('timetable'); // superuser หรือเมื่อระบบไม่ได้ล็อก
+$canEdit     = canEditSection('timetable'); // superuser หรือเมื่อระบบไม่ได้ล็อก
+$canEditDuty = canEditSection('duty');      // สิทธิ์จัดการเวร (สำหรับปุ่มลบเวร)
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
@@ -235,6 +236,26 @@ if ($view === 'class') {
 }
 
 /* =========================
+   Duties (teacher view) — แสดงเวรของครู + ปุ่มลบเวร
+========================= */
+$dutyCell = []; // [day][period] => list of ['assignment_id','post_name']
+if ($view === 'teacher' && $teacher_id) {
+    $stDuty = $pdo->prepare("
+        SELECT dta.id AS assignment_id, dms.day_of_week, dmts.period_no, dmp.post_name
+        FROM duty_term_assignments dta
+        JOIN duty_master_shifts dms ON dms.id = dta.duty_master_shift_id
+        JOIN duty_master_time_slots dmts ON dmts.id = dms.duty_time_slot_id
+        JOIN duty_master_posts dmp ON dmp.id = dms.duty_post_id
+        WHERE dta.academic_year_id=? AND dta.term_no=? AND dta.teacher_id=?
+          AND dmts.period_no IS NOT NULL
+    ");
+    $stDuty->execute([$year_id, $term_no, $teacher_id]);
+    foreach ($stDuty as $r) {
+        $dutyCell[(int)$r['day_of_week']][(int)$r['period_no']][] = $r;
+    }
+}
+
+/* =========================
    Loads for add-form
 ========================= */
 if ($view === 'class') {
@@ -418,6 +439,22 @@ ob_start();
         ?>
           <td class="px-2 py-2 border-l border-slate-200 align-top">
             <div class="cell-content">
+              <?php
+              // ✅ แสดงเวรของครู (มุมมองตามครู) — แสดงเป็นการ์ดม่วง พร้อมปุ่มลบเวร
+              if ($view === 'teacher' && !empty($dutyCell[$d][$pp])):
+                foreach ($dutyCell[$d][$pp] as $du): ?>
+                <div class="bg-purple-100 border-2 border-purple-400 rounded-lg p-2 mb-1.5 flex items-center justify-between gap-1">
+                  <span class="text-xs text-purple-900 font-semibold">🛡️ เวร: <?= htmlspecialchars((string)$du['post_name']) ?></span>
+                  <?php if ($canEditDuty): ?>
+                  <form method="post" onsubmit="return ttConfirmSubmit(this,{text:'ลบเวรของครูคนนี้?'});" style="display:inline;margin:0">
+                    <input type="hidden" name="csrf" value="<?= csrf_token() ?>">
+                    <input type="hidden" name="action" value="delete_duty">
+                    <input type="hidden" name="assignment_id" value="<?= (int)$du['assignment_id'] ?>">
+                    <button type="submit" class="delete-btn text-rose-600 hover:text-rose-700 hover:bg-rose-50" title="ลบเวร">🗑️</button>
+                  </form>
+                  <?php endif; ?>
+                </div>
+              <?php endforeach; endif; ?>
               <?php
               if ($view === 'class' && in_array($pp, $breakPeriods)) {
                   echo '<div class="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-2 text-center text-xs text-yellow-900 font-semibold">💤 พัก</div>';

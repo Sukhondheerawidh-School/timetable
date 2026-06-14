@@ -408,6 +408,7 @@ $canPlaceConsecutive = function(int $cid, array $tids, int $day, int $startPerio
       // ตรวจสอบปกติ
       if (isset($maps['teacherBusy'][$day][$p][$tid])) return false;
       if (isset($maps['teacherActivity'][$day][$p][$tid])) return false;
+      if (isset($maps['teacherDuty'][$day][$p][$tid])) return false; // ครูติดเวร
     }
     
     if (isset($maps['classActivity'][$day][$p][$cid])) return false;
@@ -646,7 +647,21 @@ $scoreSlot = function(int $cid, int $tid, string $subj, int $day, int $period, b
   if ($hasSameSubjectToday) {
     $score += 50;
   }
-  
+
+  // ✅ 8. (Soft) เลี่ยงวิชากลุ่มเดียวกัน (หลัก/เสริม) เรียนติดกัน
+  // เช่น คาบนี้คณิตหลัก คาบติดกันไม่ควรเป็นคณิตเสริม — ให้เด็กพักสมองอย่างน้อย 1 คาบ
+  // ลงโทษหนักแต่เป็น soft (ยังลงได้ถ้าไม่มีทางเลือกอื่น เพื่อไม่ให้จัดล้มเหลว)
+  $family = tt_subject_family($subj);
+  if ($family !== null) {
+    foreach ([$period - 1, $period + 1] as $adjP) {
+      $neighbor = $maps['classPeriodSubject'][$day][$adjP][$cid] ?? null;
+      if ($neighbor !== null && $neighbor !== $subj && tt_subject_family($neighbor) === $family) {
+        $score += 40;
+        break;
+      }
+    }
+  }
+
   return $score;
 };
 
@@ -720,6 +735,7 @@ $estimateFeasibleCount = function(array $L, int $passNo, int $maxPasses) use (
           }
           if (isset($maps['teacherBusy'][$d][$p][$tid])) continue 2;
           if (isset($maps['teacherActivity'][$d][$p][$tid])) continue 2;
+          if (isset($maps['teacherDuty'][$d][$p][$tid])) continue 2; // ครูติดเวร
         }
         if (isset($maps['classActivity'][$d][$p][(int)$L['class_id']])) continue;
       }
@@ -853,6 +869,7 @@ try{
                 // ตรวจสอบปกติ
                 if(isset($maps['teacherBusy'][$d][$p][$tid])){ $conf=true; $whyT='ครูติดคาบ'; break; }
                 if(isset($maps['teacherActivity'][$d][$p][$tid])){ $conf=true; $whyT='ติดกิจกรรมครู'; break; }
+                if(isset($maps['teacherDuty'][$d][$p][$tid])){ $conf=true; $whyT='ครูติดเวร'; break; }
               }
               if($conf){ $why=$whyT; continue; }
               if(isset($maps['classActivity'][$d][$p][(int)$L['class_id']])){ $why='ติดกิจกรรมห้อง'; continue; }
@@ -1053,6 +1070,7 @@ try{
             }
             if (isset($maps['teacherBusy'][$d][$p][$tid])) continue 2;
             if (isset($maps['teacherActivity'][$d][$p][$tid])) continue 2;
+            if (isset($maps['teacherDuty'][$d][$p][$tid])) continue 2; // ครูติดเวร
           }
 
           $periodsToCheck = [$p];
@@ -1126,6 +1144,7 @@ try{
                 if (isset($c['unavailable_slots'][$d][$p])) { $conf=true; break; }
               }
               if (isset($maps['teacherActivity'][$d][$p][$tid])) { $conf=true; break; }
+              if (isset($maps['teacherDuty'][$d][$p][$tid])) { $conf=true; break; } // ครูติดเวร
             }
             if ($conf) continue;
 
