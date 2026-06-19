@@ -5,6 +5,8 @@ require_once __DIR__ . '/../app/db.php';
 requireLogin();
 requireAdmin();
 
+tt_teachers_init($pdo);
+
 // ดึงกลุ่มสาระทั้งหมด (รวม inactive) เพื่อ map label
 $grpStmt = $pdo->query('SELECT id, name FROM subject_groups ORDER BY display_order, name');
 $grpMap = [];
@@ -14,7 +16,7 @@ foreach ($grpStmt->fetchAll() as $r) {
 
 // ดึงครูทั้งหมด
 $stmt = $pdo->query(
-    'SELECT teacher_code, title, first_name, last_name, subject_group
+    'SELECT teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, subject_group
      FROM teachers
      ORDER BY teacher_code, first_name, last_name'
 );
@@ -30,8 +32,8 @@ echo "\xEF\xBB\xBF";
 
 $out = fopen('php://output', 'w');
 
-// Header row
-fputcsv($out, ['รหัสประจำตัว', 'คำนำหน้า', 'ชื่อ', 'นามสกุล', 'กลุ่มสาระ']);
+// Header row (ตรงกับเทมเพลตนำเข้า — คอลัมน์รหัสผ่านเว้นว่างเพื่อไม่เขียนทับเมื่อ re-import)
+fputcsv($out, ['รหัสประจำตัว', 'คำนำหน้า', 'ชื่อ', 'นามสกุล', 'ชื่อภาษาอังกฤษ', 'นามสกุลภาษาอังกฤษ', 'อีเมล', 'รหัสผ่าน', 'กลุ่มสาระ']);
 
 // Data rows
 foreach ($teachers as $t) {
@@ -43,6 +45,10 @@ foreach ($teachers as $t) {
         $t['title'],
         $t['first_name'],
         $t['last_name'],
+        $t['first_name_en'] ?? '',
+        $t['last_name_en'] ?? '',
+        $t['email'] ?? '',
+        '',
         $grpName,
     ]);
 }

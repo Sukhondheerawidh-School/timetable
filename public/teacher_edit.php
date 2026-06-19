@@ -6,6 +6,7 @@ require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
+tt_teachers_init($pdo);
 tt_buildings_init($pdo);
 $buildings = tt_buildings_list($pdo, true);
 
@@ -30,33 +31,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
   } else {
-    $code  = trim($_POST['teacher_code'] ?? '');
-    $title = trim($_POST['title'] ?? '');
-    $first = trim($_POST['first_name'] ?? '');
-    $last  = trim($_POST['last_name'] ?? '');
+    $code     = trim($_POST['teacher_code'] ?? '');
+    $title    = trim($_POST['title'] ?? '');
+    $first    = trim($_POST['first_name'] ?? '');
+    $last     = trim($_POST['last_name'] ?? '');
+    $firstEn  = trim($_POST['first_name_en'] ?? '');
+    $lastEn   = trim($_POST['last_name_en'] ?? '');
+    $email    = trim($_POST['email'] ?? '');
+    $password = (string)($_POST['password'] ?? '');
     $group = ($_POST['subject_group'] ?? '') !== '' ? (int)$_POST['subject_group'] : null;
     $buildingIds = array_map('intval', (array)($_POST['building_ids'] ?? $currentBuildingIds));
 
     if ($code === '' || $first === '' || $last === '') {
       $err = 'กรอก รหัสประจำตัว, ชื่อ, นามสกุล ให้ครบ';
+    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      $err = 'รูปแบบอีเมลไม่ถูกต้อง';
     } elseif (count($buildingIds) > 2) {
       $err = 'เลือกอาคารได้ไม่เกิน 2 อาคาร';
     } else {
       try {
-        $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, subject_group=? WHERE id=?');
-        $stmtU->execute([$code, $title, $first, $last, $group, $id]);
+        $emailVal  = $email   !== '' ? $email   : null;
+        $firstEnVal = $firstEn !== '' ? $firstEn : null;
+        $lastEnVal  = $lastEn  !== '' ? $lastEn  : null;
+        if ($password !== '') {
+          // เปลี่ยนรหัสผ่าน
+          $passHash = password_hash($password, PASSWORD_DEFAULT);
+          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, password_hash=?, subject_group=? WHERE id=?');
+          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $passHash, $group, $id]);
+        } else {
+          // เว้นว่าง = คงรหัสผ่านเดิม
+          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, subject_group=? WHERE id=?');
+          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $group, $id]);
+        }
 
         tt_teacher_buildings_set($pdo, $id, $buildingIds);
 
         $oldData = $teacher;
+        unset($oldData['password_hash']);
         $oldData['building_ids'] = $currentBuildingIds;
         $newData = $teacher;
+        unset($newData['password_hash']);
         $newData['teacher_code'] = $code;
         $newData['title'] = $title;
         $newData['first_name'] = $first;
         $newData['last_name'] = $last;
+        $newData['first_name_en'] = $firstEn;
+        $newData['last_name_en'] = $lastEn;
+        $newData['email'] = $email;
         $newData['subject_group'] = $group;
         $newData['building_ids'] = $buildingIds;
+        if ($password !== '') $newData['password_changed'] = true;
         logUpdate('teachers', $id, $oldData, $newData);
 
         flash_set('success', 'อัปเดตข้อมูลครูสำเร็จ');
@@ -122,6 +146,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">นามสกุล</label>
       <input name="last_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['last_name'] ?? $teacher['last_name']); ?>">
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อจริง (ภาษาอังกฤษ)</label>
+        <input name="first_name_en" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น Somchai" value="<?= htmlspecialchars($_POST['first_name_en'] ?? ($teacher['first_name_en'] ?? '')); ?>">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">นามสกุล (ภาษาอังกฤษ)</label>
+        <input name="last_name_en" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น Jaidee" value="<?= htmlspecialchars($_POST['last_name_en'] ?? ($teacher['last_name_en'] ?? '')); ?>">
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">อีเมล</label>
+      <input type="email" name="email" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น somchai@example.com" value="<?= htmlspecialchars($_POST['email'] ?? ($teacher['email'] ?? '')); ?>">
+    </div>
+    <div>
+      <?php $hasPwd = !empty($teacher['password_hash']); ?>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสผ่าน <span class="text-slate-400 font-normal">(สำหรับเชื่อมต่อ API ระบบอื่น)</span></label>
+      <input type="password" name="password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="<?= $hasPwd ? 'เว้นว่างไว้ = ใช้รหัสผ่านเดิม' : 'เว้นว่างได้ถ้ายังไม่กำหนด'; ?>">
+      <p class="text-xs text-slate-500 mt-1"><?= $hasPwd ? '🔒 มีการตั้งรหัสผ่านไว้แล้ว — กรอกใหม่เพื่อเปลี่ยน' : 'ระบบจะเก็บเป็นค่าที่เข้ารหัส (hash) ไม่สามารถดูย้อนหลังได้'; ?></p>
     </div>
 
     <div>

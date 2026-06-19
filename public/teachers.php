@@ -5,6 +5,8 @@ require_once __DIR__ . '/../app/db.php';
 requireLogin();
 requireAdmin();
 
+tt_teachers_init($pdo);
+
 // รับพารามิเตอร์ฟิลเตอร์
 $kw    = trim($_GET['q'] ?? '');
 $group = (isset($_GET['group']) && $_GET['group'] !== '') ? (int)$_GET['group'] : null;
@@ -16,12 +18,12 @@ if ($group !== null) $_filter_parts['group'] = $group;
 $_filter_qs = $_filter_parts ? '?' . http_build_query($_filter_parts) : '';
 
 // สร้าง SQL + เงื่อนไข
-$sql = 'SELECT id, teacher_code, title, first_name, last_name, subject_group, created_at
+$sql = 'SELECT id, teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, subject_group, created_at
         FROM teachers WHERE 1=1';
 $params = [];
 
 if ($kw !== '') {
-  $sql .= ' AND (teacher_code LIKE :kw OR first_name LIKE :kw OR last_name LIKE :kw)';
+  $sql .= ' AND (teacher_code LIKE :kw OR first_name LIKE :kw OR last_name LIKE :kw OR first_name_en LIKE :kw OR last_name_en LIKE :kw OR email LIKE :kw)';
   $params['kw'] = '%'.$kw.'%';
 }
 if ($group !== null) {
@@ -134,8 +136,16 @@ $groupLabels = teacher_group_options();
             <span class="font-semibold text-slate-800"><?= htmlspecialchars($t['teacher_code']); ?></span>
           </td>
           <td class="px-4 py-4 text-slate-600"><?= htmlspecialchars($t['title']); ?></td>
-          <td class="px-4 py-4 font-medium text-slate-800"><?= htmlspecialchars($t['first_name']); ?></td>
-          <td class="px-4 py-4 font-medium text-slate-800"><?= htmlspecialchars($t['last_name']); ?></td>
+          <td class="px-4 py-4 font-medium text-slate-800">
+            <?= htmlspecialchars($t['first_name']); ?>
+            <?php if (!empty($t['first_name_en'])): ?><div class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($t['first_name_en']); ?></div><?php endif; ?>
+          </td>
+          <td class="px-4 py-4 font-medium text-slate-800">
+            <?= htmlspecialchars($t['last_name']); ?>
+            <?php if (!empty($t['last_name_en'])): ?><div class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($t['last_name_en']); ?></div><?php endif; ?>
+            <?php if (!empty($t['email'])): ?><div class="text-xs text-slate-400 font-normal">✉️ <?= htmlspecialchars($t['email']); ?></div><?php endif; ?>
+            <?php if (!empty($t['password_hash'])): ?><span class="ml-1 align-middle" title="ตั้งรหัสผ่านสำหรับ API แล้ว">🔑</span><?php endif; ?>
+          </td>
           <td class="px-4 py-4">
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
               <?= htmlspecialchars(teacher_group_label((int)$t['subject_group'])); ?>

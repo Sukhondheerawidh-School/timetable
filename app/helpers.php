@@ -332,6 +332,31 @@ function tt_validate_term_no(PDO $pdo, int $yearId, int $termNo): int {
 /* =========================
    Buildings (อาคาร)
 ========================= */
+/**
+ * Best-effort schema evolution สำหรับตาราง teachers
+ * เพิ่มคอลัมน์ ชื่อ/นามสกุลภาษาอังกฤษ และ password_hash (สำหรับ API ในอนาคต)
+ */
+function tt_teachers_init(PDO $pdo): void {
+  static $done = false;
+  if ($done) return;
+
+  $alters = [
+    "ALTER TABLE teachers ADD COLUMN first_name_en VARCHAR(100) NULL AFTER last_name",
+    "ALTER TABLE teachers ADD COLUMN last_name_en VARCHAR(100) NULL AFTER first_name_en",
+    "ALTER TABLE teachers ADD COLUMN email VARCHAR(190) NULL AFTER last_name_en",
+    "ALTER TABLE teachers ADD COLUMN password_hash VARCHAR(255) NULL AFTER email",
+  ];
+  foreach ($alters as $sql) {
+    try {
+      $pdo->exec($sql);
+    } catch (Throwable $e) {
+      // ignore duplicate column / unsupported
+    }
+  }
+
+  $done = true;
+}
+
 function tt_buildings_init(PDO $pdo): void {
   static $done = false;
   if ($done) return;
