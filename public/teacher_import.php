@@ -135,7 +135,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           if ($iCode === false) {
             $err = 'ไฟล์ต้องมีคอลัมน์ รหัสประจำตัว/teacher_code อย่างน้อย';
           } else {
-            $skipped = 0;
+            $skipped    = 0;   // รหัสใหม่แต่ไม่มีชื่อ/นามสกุล
+            $skippedNew = 0;   // โหมดอัปเดตเท่านั้น: ข้ามรหัสที่ยังไม่มีในระบบ
+            $updateOnly = !empty($_POST['update_only']);
 
             // ตรวจว่ารหัสนี้มีอยู่แล้วหรือยัง (เพื่อตัดสินใจ เพิ่ม/อัปเดต และบังคับชื่อเฉพาะตอนเพิ่มใหม่)
             $chk = $pdo->prepare('SELECT 1 FROM teachers WHERE teacher_code = ?');
@@ -175,6 +177,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $chk->execute([$code]);
               $exists = (bool)$chk->fetchColumn();
 
+              // โหมด "อัปเดตเท่านั้น": ข้ามรหัสที่ยังไม่มีในระบบ (ไม่เพิ่มครูใหม่)
+              if (!$exists && $updateOnly) { $skippedNew++; continue; }
+
               // เพิ่มใหม่ต้องมีชื่อ+นามสกุล (กันสร้างครูที่ไม่มีชื่อ) · อัปเดตเว้นว่างได้
               if (!$exists && ($first === '' || $last === '')) { $skipped++; continue; }
 
@@ -194,12 +199,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             unlink($tmpUtf);
 
             logActivity('import', 'teachers', null, null, [
+              'mode'          => $updateOnly ? 'update_only' : 'upsert',
               'created_count' => $done,
               'updated_count' => $updated,
               'skipped_count' => $skipped,
+              'skipped_new_count' => $skippedNew,
             ]);
-            $msg = "นำเข้าเสร็จสิ้น: เพิ่มใหม่ {$done} รายการ, อัปเดต {$updated} รายการ";
-            if ($skipped > 0) $msg .= ", ข้าม {$skipped} รายการ (รหัสใหม่แต่ไม่มีชื่อ/นามสกุล)";
+            if ($updateOnly) {
+              $msg = "นำเข้า (อัปเดตเท่านั้น) เสร็จสิ้น: อัปเดต {$updated} รายการ";
+              if ($skippedNew > 0) $msg .= ", ข้าม {$skippedNew} รายการ (ไม่พบรหัสในระบบ จึงไม่เพิ่มใหม่)";
+            } else {
+              $msg = "นำเข้าเสร็จสิ้น: เพิ่มใหม่ {$done} รายการ, อัปเดต {$updated} รายการ";
+              if ($skipped > 0) $msg .= ", ข้าม {$skipped} รายการ (รหัสใหม่แต่ไม่มีชื่อ/นามสกุล)";
+            }
             flash_set('success', $msg);
             redirect('teachers.php');
           }
@@ -228,6 +240,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label class="block text-sm font-medium text-slate-700 mb-1.5">ไฟล์ CSV</label>
         <input type="file" name="csv" accept=".csv" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required>
       </div>
+      <label class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
+        <input type="checkbox" name="update_only" value="1" <?= !empty($_POST['update_only']) ? 'checked' : ''; ?> class="mt-0.5 w-4 h-4 rounded border-slate-300 accent-amber-600">
+        <span class="text-sm text-amber-800">
+          <strong>นำเข้าเพื่ออัปเดตเท่านั้น (ไม่เพิ่มครูใหม่)</strong><br>
+          <span class="text-xs text-amber-700">ถ้ารหัสประจำตัวในไฟล์ไม่มีอยู่ในระบบ จะข้ามแถวนั้น (ไม่สร้างครูใหม่) — กันข้อมูลที่ไม่ต้องการเข้ามาโดยไม่ตั้งใจ</span>
+        </span>
+      </label>
       <p class="text-xs text-slate-600">
         ต้องมีคอลัมน์: <code>รหัสประจำตัว/teacher_code</code> (อย่างน้อย)<br>
         คอลัมน์อื่น: <code>คำนำหน้า/title</code>, <code>ชื่อ/first_name</code>, <code>นามสกุล/last_name</code>, <code>กลุ่มสาระ/subject_group</code> (1–9 หรือพิมพ์ชื่อกลุ่ม), <code>ชื่อภาษาอังกฤษ/first_name_en</code>, <code>นามสกุลภาษาอังกฤษ/last_name_en</code>, <code>อีเมล/email</code>, <code>รหัสผ่าน/password</code><br>

@@ -124,8 +124,8 @@ $groupLabels = teacher_group_options();
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">คำนำหน้า</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">ชื่อ</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">นามสกุล</th>
+          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">✉️ อีเมล / 🔑 รหัสผ่าน</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">📚 กลุ่มสาระ</th>
-          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">📅 สร้างเมื่อ</th>
           <th class="text-right px-4 py-4 text-sm font-semibold text-slate-700">⚙️ การทำงาน</th>
         </tr>
       </thead>
@@ -143,15 +143,24 @@ $groupLabels = teacher_group_options();
           <td class="px-4 py-4 font-medium text-slate-800">
             <?= htmlspecialchars($t['last_name']); ?>
             <?php if (!empty($t['last_name_en'])): ?><div class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($t['last_name_en']); ?></div><?php endif; ?>
-            <?php if (!empty($t['email'])): ?><div class="text-xs text-slate-400 font-normal">✉️ <?= htmlspecialchars($t['email']); ?></div><?php endif; ?>
-            <?php if (!empty($t['password_hash'])): ?><span class="ml-1 align-middle" title="ตั้งรหัสผ่านสำหรับ API แล้ว">🔑</span><?php endif; ?>
+          </td>
+          <td class="px-4 py-4">
+            <?php if (!empty($t['email'])): ?>
+              <div class="text-sm text-slate-600 break-all">✉️ <?= htmlspecialchars($t['email']); ?></div>
+            <?php else: ?>
+              <div class="text-xs text-slate-300">— ไม่มีอีเมล —</div>
+            <?php endif; ?>
+            <?php if (!empty($t['password_hash'])): ?>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" title="ตั้งรหัสผ่านสำหรับ API แล้ว">🔑 มีรหัสผ่าน</span>
+            <?php else: ?>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-400 border border-slate-200">ยังไม่ตั้งรหัสผ่าน</span>
+            <?php endif; ?>
           </td>
           <td class="px-4 py-4">
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
               <?= htmlspecialchars(teacher_group_label((int)$t['subject_group'])); ?>
             </span>
           </td>
-          <td class="px-4 py-4 text-slate-600 text-xs"><?= th_date($t['created_at']); ?></td>
           <td class="px-4 py-4 text-right">
             <div class="flex items-center justify-end gap-2">
               <a href="<?= url('teacher_edit.php?id='.(int)$t['id'].(($kw!=='')?'&from_q='.urlencode($kw):'').(($group!==null)?'&from_group='.(int)$group:'')); ?>" 
