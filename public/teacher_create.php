@@ -34,9 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $err = 'เลือกอาคารได้ไม่เกิน 2 อาคาร';
     } else {
       try {
-        $passHash = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : null;
-        $stmt = $pdo->prepare('INSERT INTO teachers(teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, subject_group) VALUES (?,?,?,?,?,?,?,?,?)');
-        $stmt->execute([$code, $title, $first, $last, ($firstEn !== '' ? $firstEn : null), ($lastEn !== '' ? $lastEn : null), ($email !== '' ? $email : null), $passHash, $group]);
+        $passHash  = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : null;
+        $passPlain = $password !== '' ? $password : null;
+        $stmt = $pdo->prepare('INSERT INTO teachers(teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, password_plain, subject_group) VALUES (?,?,?,?,?,?,?,?,?,?)');
+        $stmt->execute([$code, $title, $first, $last, ($firstEn !== '' ? $firstEn : null), ($lastEn !== '' ? $lastEn : null), ($email !== '' ? $email : null), $passHash, $passPlain, $group]);
 
         $newId = (int)$pdo->lastInsertId();
         if ($newId > 0) {
@@ -135,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสผ่าน <span class="text-slate-400 font-normal">(สำหรับเชื่อมต่อ API ระบบอื่น)</span></label>
       <input type="password" name="password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เว้นว่างได้ถ้ายังไม่กำหนด">
-      <p class="text-xs text-slate-500 mt-1">ระบบจะเก็บเป็นค่าที่เข้ารหัส (hash) ไม่สามารถดูย้อนหลังได้</p>
+      <p class="text-xs text-slate-500 mt-1">ระบบเก็บแบบ hash สำหรับ API และเก็บสำเนาให้ผู้ดูแลดูย้อนหลังได้ในหน้ารายชื่อครู</p>
     </div>
 
     <div>

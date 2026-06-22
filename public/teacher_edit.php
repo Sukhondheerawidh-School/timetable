@@ -56,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($password !== '') {
           // เปลี่ยนรหัสผ่าน
           $passHash = password_hash($password, PASSWORD_DEFAULT);
-          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, password_hash=?, subject_group=? WHERE id=?');
-          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $passHash, $group, $id]);
+          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, password_hash=?, password_plain=?, subject_group=? WHERE id=?');
+          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $passHash, $password, $group, $id]);
         } else {
           // เว้นว่าง = คงรหัสผ่านเดิม
           $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, subject_group=? WHERE id=?');
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <?php $hasPwd = !empty($teacher['password_hash']); ?>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสผ่าน <span class="text-slate-400 font-normal">(สำหรับเชื่อมต่อ API ระบบอื่น)</span></label>
       <input type="password" name="password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="<?= $hasPwd ? 'เว้นว่างไว้ = ใช้รหัสผ่านเดิม' : 'เว้นว่างได้ถ้ายังไม่กำหนด'; ?>">
-      <p class="text-xs text-slate-500 mt-1"><?= $hasPwd ? '🔒 มีการตั้งรหัสผ่านไว้แล้ว — กรอกใหม่เพื่อเปลี่ยน' : 'ระบบจะเก็บเป็นค่าที่เข้ารหัส (hash) ไม่สามารถดูย้อนหลังได้'; ?></p>
+      <p class="text-xs text-slate-500 mt-1"><?= $hasPwd ? '🔑 มีการตั้งรหัสผ่านไว้แล้ว — กรอกใหม่เพื่อเปลี่ยน (ผู้ดูแลดูรหัสได้ในหน้ารายชื่อครู)' : 'ระบบเก็บแบบ hash สำหรับ API และเก็บสำเนาให้ผู้ดูแลดูย้อนหลังได้'; ?></p>
     </div>
 
     <div>

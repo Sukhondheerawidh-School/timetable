@@ -18,7 +18,7 @@ if ($group !== null) $_filter_parts['group'] = $group;
 $_filter_qs = $_filter_parts ? '?' . http_build_query($_filter_parts) : '';
 
 // สร้าง SQL + เงื่อนไข
-$sql = 'SELECT id, teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, subject_group, created_at
+$sql = 'SELECT id, teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, password_plain, subject_group, created_at
         FROM teachers WHERE 1=1';
 $params = [];
 
@@ -150,8 +150,14 @@ $groupLabels = teacher_group_options();
             <?php else: ?>
               <div class="text-xs text-slate-300">— ไม่มีอีเมล —</div>
             <?php endif; ?>
-            <?php if (!empty($t['password_hash'])): ?>
-              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" title="ตั้งรหัสผ่านสำหรับ API แล้ว">🔑 มีรหัสผ่าน</span>
+            <?php if (!empty($t['password_plain'])): ?>
+              <div class="mt-1 flex items-center gap-1.5">
+                <span class="text-xs text-amber-700">🔑</span>
+                <code class="tt-pwd font-mono text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 select-all" data-pwd="<?= htmlspecialchars($t['password_plain']); ?>">••••••••</code>
+                <button type="button" class="tt-pwd-toggle text-xs font-medium text-indigo-600 hover:text-indigo-800" data-shown="0">👁️ ดู</button>
+              </div>
+            <?php elseif (!empty($t['password_hash'])): ?>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" title="มีรหัสผ่าน แต่ตั้งไว้ก่อนรองรับการดูย้อนหลัง — ตั้งรหัสใหม่หรือ import ซ้ำเพื่อให้ดูได้">🔑 มีรหัสผ่าน (ดูไม่ได้)</span>
             <?php else: ?>
               <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-400 border border-slate-200">ยังไม่ตั้งรหัสผ่าน</span>
             <?php endif; ?>
@@ -214,6 +220,23 @@ document.addEventListener('DOMContentLoaded', () => {
     q.value = '';
     grp.value = '';
     form.submit();
+  });
+
+  // 👁️ สลับแสดง/ซ่อนรหัสผ่าน
+  document.querySelectorAll('.tt-pwd-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const code = btn.parentElement.querySelector('.tt-pwd');
+      const shown = btn.dataset.shown === '1';
+      if (shown) {
+        code.textContent = '••••••••';
+        btn.textContent = '👁️ ดู';
+        btn.dataset.shown = '0';
+      } else {
+        code.textContent = code.dataset.pwd;
+        btn.textContent = '🙈 ซ่อน';
+        btn.dataset.shown = '1';
+      }
+    });
   });
 });
 </script>

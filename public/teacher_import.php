@@ -144,8 +144,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ทุกคอลัมน์: ค่าว่างใน CSV = NULL → คงค่าเดิมไว้ (IF ... IS NULL) ไม่เขียนทับ
             $stmt = $pdo->prepare('
-              INSERT INTO teachers(teacher_code,title,first_name,last_name,first_name_en,last_name_en,email,password_hash,subject_group)
-              VALUES (?,?,?,?,?,?,?,?,?)
+              INSERT INTO teachers(teacher_code,title,first_name,last_name,first_name_en,last_name_en,email,password_hash,password_plain,subject_group)
+              VALUES (?,?,?,?,?,?,?,?,?,?)
               ON DUPLICATE KEY UPDATE
                 title=IF(VALUES(title) = "", title, VALUES(title)),
                 first_name=IF(VALUES(first_name) = "", first_name, VALUES(first_name)),
@@ -154,6 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 last_name_en=IF(VALUES(last_name_en) IS NULL, last_name_en, VALUES(last_name_en)),
                 email=IF(VALUES(email) IS NULL, email, VALUES(email)),
                 password_hash=IF(VALUES(password_hash) IS NULL, password_hash, VALUES(password_hash)),
+                password_plain=IF(VALUES(password_plain) IS NULL, password_plain, VALUES(password_plain)),
                 subject_group=IF(VALUES(subject_group) IS NULL, subject_group, VALUES(subject_group))
             ');
 
@@ -189,8 +190,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $lastEnVal  = $lastEn  !== '' ? $lastEn  : null;
               $emailVal   = ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : null;
               $passHash   = $pass    !== '' ? password_hash($pass, PASSWORD_DEFAULT) : null;
+              $passPlain  = $pass    !== '' ? $pass : null;
 
-              $ok = $stmt->execute([$code,$title,$first,$last,$firstEnVal,$lastEnVal,$emailVal,$passHash,$group]);
+              $ok = $stmt->execute([$code,$title,$first,$last,$firstEnVal,$lastEnVal,$emailVal,$passHash,$passPlain,$group]);
               if ($ok) {
                 if ($exists) $updated++; else $done++;
               }
@@ -252,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         คอลัมน์อื่น: <code>คำนำหน้า/title</code>, <code>ชื่อ/first_name</code>, <code>นามสกุล/last_name</code>, <code>กลุ่มสาระ/subject_group</code> (1–9 หรือพิมพ์ชื่อกลุ่ม), <code>ชื่อภาษาอังกฤษ/first_name_en</code>, <code>นามสกุลภาษาอังกฤษ/last_name_en</code>, <code>อีเมล/email</code>, <code>รหัสผ่าน/password</code><br>
         💡 ถ้า <code>รหัสประจำตัว</code> ซ้ำกับที่มีอยู่ ระบบจะ<strong>อัปเดต</strong>ข้อมูลให้ — <strong>ช่องไหนเว้นว่างไว้จะไม่เขียนทับของเดิม</strong> (อัปเดตเฉพาะช่องที่กรอกมา)<br>
         ➕ การ<strong>เพิ่มครูใหม่</strong>ต้องมี ชื่อ + นามสกุล ด้วย (ถ้าเป็นรหัสใหม่แต่ไม่มีชื่อ ระบบจะข้ามแถวนั้น)<br>
-        🔒 รหัสผ่านจะถูกเก็บแบบเข้ารหัส (hash) ทันทีหลังนำเข้า<br>
+        🔑 รหัสผ่านจะถูกเก็บแบบ hash (สำหรับ API) พร้อมสำเนาให้ผู้ดูแลดูย้อนหลังได้ในหน้ารายชื่อครู<br>
         <a class="underline text-blue-600" href="<?= url('teacher_template.php'); ?>">ดาวน์โหลดเทมเพลต CSV</a>
       </p>
       <div class="flex items-center gap-2">

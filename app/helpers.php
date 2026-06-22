@@ -345,6 +345,7 @@ function tt_teachers_init(PDO $pdo): void {
     "ALTER TABLE teachers ADD COLUMN last_name_en VARCHAR(100) NULL AFTER first_name_en",
     "ALTER TABLE teachers ADD COLUMN email VARCHAR(190) NULL AFTER last_name_en",
     "ALTER TABLE teachers ADD COLUMN password_hash VARCHAR(255) NULL AFTER email",
+    "ALTER TABLE teachers ADD COLUMN password_plain VARCHAR(255) NULL AFTER password_hash",
   ];
   foreach ($alters as $sql) {
     try {
