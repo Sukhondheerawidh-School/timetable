@@ -341,6 +341,8 @@ function tt_teachers_init(PDO $pdo): void {
   if ($done) return;
 
   $alters = [
+    "ALTER TABLE teachers ADD COLUMN national_id VARCHAR(20) NULL AFTER teacher_code",
+    "ALTER TABLE teachers ADD COLUMN username VARCHAR(100) NULL AFTER teacher_code",
     "ALTER TABLE teachers ADD COLUMN first_name_en VARCHAR(100) NULL AFTER last_name",
     "ALTER TABLE teachers ADD COLUMN last_name_en VARCHAR(100) NULL AFTER first_name_en",
     "ALTER TABLE teachers ADD COLUMN email VARCHAR(190) NULL AFTER last_name_en",
@@ -460,6 +462,136 @@ function tt_teacher_buildings_set(PDO $pdo, int $teacherId, array $buildingIds):
   } catch (Throwable $e) {
     // ignore
   }
+}
+
+/* =========================
+   Teacher grade levels (ระดับชั้นที่สอน)
+   - "auto": ดึงจากตารางสอน (teaching_loads) ของปีการศึกษานั้น ๆ → ติ๊กถูกและล็อกไว้ (เอาออกไม่ได้)
+   - "manual": ผู้ดูแลติ๊กเอง → เก็บในตาราง teacher_grade_levels
+========================= */
+function tt_teacher_grade_levels_init(PDO $pdo): void {
+  static $done = false;
+  if ($done) return;
+  try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS teacher_grade_levels (
+      teacher_id INT UNSIGNED NOT NULL,
+      grade_label VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (teacher_id, grade_label),
+      CONSTRAINT fk_tgl_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+  } catch (Throwable $e) {
+    // ignore
+  }
+  $done = true;
+}
+
+/**
+ * รายชื่อระดับชั้นทั้งหมด (distinct grade_label จากตารางชั้นเรียน) เรียงแบบเดียวกับหน้าชั้นเรียน
+ * @return string[]
+ */
+function tt_grade_levels_all(PDO $pdo): array {
+  try {
+    $sql = "SELECT DISTINCT grade_label FROM classes
+            WHERE grade_label IS NOT NULL AND grade_label <> ''
+            ORDER BY FIELD(LEFT(grade_label,1),'ต','อ','ป','ม'), grade_label ASC";
+    return array_map('strval', $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN));
+  } catch (Throwable $e) {
+    return [];
+  }
+}
+
+/**
+ * ระดับชั้นที่ครูสอนจริงตามตารางสอนในปีการศึกษาที่กำหนด (ติ๊กถูก + ล็อก)
+ * @return string[]
+ */
+function tt_teacher_grade_levels_auto(PDO $pdo, int $teacherId, int $yearId): array {
+  if ($teacherId <= 0 || $yearId <= 0) return [];
+  try {
+    $st = $pdo->prepare("SELECT DISTINCT c.grade_label
+      FROM teaching_loads tl
+      JOIN classes c ON c.id = tl.class_id
+      WHERE tl.teacher_id = ? AND tl.academic_year_id = ?
+        AND c.grade_label IS NOT NULL AND c.grade_label <> ''");
+    $st->execute([$teacherId, $yearId]);
+    return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+  } catch (Throwable $e) {
+    return [];
+  }
+}
+
+/**
+ * ระดับชั้นที่ผู้ดูแลติ๊กเอง (เก็บในตาราง)
+ * @return string[]
+ */
+function tt_teacher_grade_levels_manual(PDO $pdo, int $teacherId): array {
+  tt_teacher_grade_levels_init($pdo);
+  if ($teacherId <= 0) return [];
+  try {
+    $st = $pdo->prepare('SELECT grade_label FROM teacher_grade_levels WHERE teacher_id=?');
+    $st->execute([$teacherId]);
+    return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+  } catch (Throwable $e) {
+    return [];
+  }
+}
+
+/**
+ * บันทึกระดับชั้นที่ติ๊กเอง (แทนที่ของเดิมทั้งหมด) — ส่วนที่ดึงจากตารางสอนไม่ต้องเก็บ เพราะคำนวณสด
+ * @param string[] $grades
+ */
+function tt_teacher_grade_levels_set(PDO $pdo, int $teacherId, array $grades): void {
+  tt_teacher_grade_levels_init($pdo);
+  if ($teacherId <= 0) return;
+  $clean = [];
+  foreach ($grades as $g) {
+    $g = trim((string)$g);
+    if ($g === '') continue;
+    $clean[$g] = true;
+  }
+  try {
+    $pdo->prepare('DELETE FROM teacher_grade_levels WHERE teacher_id=?')->execute([$teacherId]);
+    if (!$clean) return;
+    $ins = $pdo->prepare('INSERT INTO teacher_grade_levels(teacher_id, grade_label) VALUES (?,?)');
+    foreach (array_keys($clean) as $g) {
+      $ins->execute([$teacherId, $g]);
+    }
+  } catch (Throwable $e) {
+    // ignore
+  }
+}
+
+/**
+ * map teacher_id → ระดับชั้น (สำหรับแสดงในตารางรายชื่อ โดยไม่ยิงทีละแถว)
+ * @return array{auto: array<int,string[]>, manual: array<int,string[]>}
+ */
+function tt_teacher_grade_levels_maps(PDO $pdo, int $yearId): array {
+  tt_teacher_grade_levels_init($pdo);
+  $auto = [];
+  $manual = [];
+  try {
+    if ($yearId > 0) {
+      $st = $pdo->prepare("SELECT DISTINCT tl.teacher_id, c.grade_label
+        FROM teaching_loads tl
+        JOIN classes c ON c.id = tl.class_id
+        WHERE tl.academic_year_id = ?
+          AND c.grade_label IS NOT NULL AND c.grade_label <> ''");
+      $st->execute([$yearId]);
+      foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $auto[(int)$r['teacher_id']][] = (string)$r['grade_label'];
+      }
+    }
+  } catch (Throwable $e) {
+    // ignore
+  }
+  try {
+    foreach ($pdo->query('SELECT teacher_id, grade_label FROM teacher_grade_levels')->fetchAll(PDO::FETCH_ASSOC) as $r) {
+      $manual[(int)$r['teacher_id']][] = (string)$r['grade_label'];
+    }
+  } catch (Throwable $e) {
+    // ignore
+  }
+  return ['auto' => $auto, 'manual' => $manual];
 }
 
 /* =========================

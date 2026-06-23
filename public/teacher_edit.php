@@ -26,12 +26,19 @@ $_back_qs = $_back_parts ? '?' . http_build_query($_back_parts) : '';
 
 $currentBuildingIds = tt_teacher_buildings_get($pdo, $id);
 
+$gradeLevels   = tt_grade_levels_all($pdo);
+$activeYearId  = tt_active_year_id($pdo);
+$autoGrades    = tt_teacher_grade_levels_auto($pdo, $id, $activeYearId);
+$manualGrades  = tt_teacher_grade_levels_manual($pdo, $id);
+
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
   } else {
     $code     = trim($_POST['teacher_code'] ?? '');
+    $nationalId = trim($_POST['national_id'] ?? '');
+    $username = trim($_POST['username'] ?? '');
     $title    = trim($_POST['title'] ?? '');
     $first    = trim($_POST['first_name'] ?? '');
     $last     = trim($_POST['last_name'] ?? '');
@@ -41,6 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = (string)($_POST['password'] ?? '');
     $group = ($_POST['subject_group'] ?? '') !== '' ? (int)$_POST['subject_group'] : null;
     $buildingIds = array_map('intval', (array)($_POST['building_ids'] ?? $currentBuildingIds));
+    // เฉพาะที่ติ๊กเอง — ส่วนที่ดึงจากตารางสอน (auto) ถูกล็อก (disabled) จึงไม่ถูกส่งมา
+    $gradeSel = array_map('strval', (array)($_POST['grade_levels'] ?? []));
 
     if ($code === '' || $first === '' || $last === '') {
       $err = 'กรอก รหัสประจำตัว, ชื่อ, นามสกุล ให้ครบ';
@@ -53,25 +62,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $emailVal  = $email   !== '' ? $email   : null;
         $firstEnVal = $firstEn !== '' ? $firstEn : null;
         $lastEnVal  = $lastEn  !== '' ? $lastEn  : null;
+        $usernameVal = $username !== '' ? $username : null;
+        $nationalIdVal = $nationalId !== '' ? $nationalId : null;
         if ($password !== '') {
           // เปลี่ยนรหัสผ่าน
           $passHash = password_hash($password, PASSWORD_DEFAULT);
-          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, password_hash=?, password_plain=?, subject_group=? WHERE id=?');
-          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $passHash, $password, $group, $id]);
+          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, national_id=?, username=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, password_hash=?, password_plain=?, subject_group=? WHERE id=?');
+          $stmtU->execute([$code, $nationalIdVal, $usernameVal, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $passHash, $password, $group, $id]);
         } else {
           // เว้นว่าง = คงรหัสผ่านเดิม
-          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, subject_group=? WHERE id=?');
-          $stmtU->execute([$code, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $group, $id]);
+          $stmtU = $pdo->prepare('UPDATE teachers SET teacher_code=?, national_id=?, username=?, title=?, first_name=?, last_name=?, first_name_en=?, last_name_en=?, email=?, subject_group=? WHERE id=?');
+          $stmtU->execute([$code, $nationalIdVal, $usernameVal, $title, $first, $last, $firstEnVal, $lastEnVal, $emailVal, $group, $id]);
         }
 
         tt_teacher_buildings_set($pdo, $id, $buildingIds);
+        tt_teacher_grade_levels_set($pdo, $id, $gradeSel);
 
         $oldData = $teacher;
         unset($oldData['password_hash']);
         $oldData['building_ids'] = $currentBuildingIds;
+        $oldData['grade_levels'] = $manualGrades;
         $newData = $teacher;
         unset($newData['password_hash']);
         $newData['teacher_code'] = $code;
+        $newData['national_id'] = $nationalId;
+        $newData['username'] = $username;
         $newData['title'] = $title;
         $newData['first_name'] = $first;
         $newData['last_name'] = $last;
@@ -80,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newData['email'] = $email;
         $newData['subject_group'] = $group;
         $newData['building_ids'] = $buildingIds;
+        $newData['grade_levels'] = $gradeSel;
         if ($password !== '') $newData['password_changed'] = true;
         logUpdate('teachers', $id, $oldData, $newData);
 
@@ -114,6 +130,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสประจำตัว</label>
       <input name="teacher_code" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['teacher_code'] ?? $teacher['teacher_code']); ?>">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสบัตรประชาชน <span class="text-slate-400 font-normal">(เว้นว่างได้)</span></label>
+      <input name="national_id" inputmode="numeric" maxlength="20" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น 1212212112121" value="<?= htmlspecialchars($_POST['national_id'] ?? ($teacher['national_id'] ?? '')); ?>">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อผู้ใช้ (username)</label>
+      <input name="username" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เว้นว่างได้" value="<?= htmlspecialchars($_POST['username'] ?? ($teacher['username'] ?? '')); ?>">
     </div>
 
     <div>
@@ -179,6 +205,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </option>
         <?php endforeach; ?>
       </select>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ระดับชั้นที่สอน</label>
+      <?php $selG = array_map('strval', (array)($_POST['grade_levels'] ?? $manualGrades)); ?>
+      <?php if (empty($gradeLevels)): ?>
+        <div class="text-xs text-slate-400">— ยังไม่มีชั้นเรียนในระบบ —</div>
+      <?php else: ?>
+        <div class="flex flex-wrap gap-3">
+          <?php foreach ($gradeLevels as $g): ?>
+            <?php $isAuto = in_array($g, $autoGrades, true); ?>
+            <label class="inline-flex items-center gap-1.5 <?= $isAuto ? 'cursor-not-allowed' : 'cursor-pointer'; ?>"
+                   <?= $isAuto ? 'title="สอนอยู่ในตารางสอน — ติ๊กอัตโนมัติและเอาออกไม่ได้"' : ''; ?>>
+              <?php if ($isAuto): ?>
+                <input type="checkbox" checked disabled class="w-4 h-4 rounded border-slate-300 accent-emerald-600">
+              <?php else: ?>
+                <input type="checkbox" name="grade_levels[]" value="<?= htmlspecialchars($g); ?>"
+                  <?= in_array($g, $selG, true) ? 'checked' : ''; ?>
+                  class="w-4 h-4 rounded border-slate-300 accent-indigo-600">
+              <?php endif; ?>
+              <span class="text-sm <?= $isAuto ? 'text-emerald-700 font-medium' : 'text-slate-700'; ?>">
+                <?= htmlspecialchars($g); ?><?= $isAuto ? ' 🔒' : ''; ?>
+              </span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">🔒 = สอนอยู่ในตารางสอนปีการศึกษาปัจจุบัน (ติ๊กอัตโนมัติ เอาออกไม่ได้) · ระดับชั้นอื่นติ๊กเองได้</div>
+      <?php endif; ?>
     </div>
 
     <div class="flex items-center gap-2">

@@ -21,6 +21,20 @@ function normalize_header($h) {
     'รหัส'         => 'teacher_code',
     'code'         => 'teacher_code',
     'teacher_code' => 'teacher_code',
+    // รหัสบัตรประชาชน
+    'รหัสบัตรประชาชน'      => 'national_id',
+    'เลขบัตรประชาชน'       => 'national_id',
+    'เลขประจำตัวประชาชน'  => 'national_id',
+    'บัตรประชาชน'         => 'national_id',
+    'national_id'         => 'national_id',
+    'nationalid'          => 'national_id',
+    'id_card'             => 'national_id',
+    'idcard'              => 'national_id',
+    // ชื่อผู้ใช้
+    'ชื่อผู้ใช้'    => 'username',
+    'ยูสเซอร์เนม'   => 'username',
+    'username'      => 'username',
+    'user'          => 'username',
     // คำนำหน้า
     'คำนำหน้า'     => 'title',
     'คำนำหน้า.'    => 'title',
@@ -123,6 +137,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $cols = array_map('normalize_header', $header);
 
           $iCode    = array_search('teacher_code', $cols);
+          $iNat     = array_search('national_id',  $cols);
+          $iUser    = array_search('username',    $cols);
           $iFirst   = array_search('first_name',  $cols);
           $iLast    = array_search('last_name',   $cols);
           $iTitle   = array_search('title',       $cols);
@@ -144,9 +160,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ทุกคอลัมน์: ค่าว่างใน CSV = NULL → คงค่าเดิมไว้ (IF ... IS NULL) ไม่เขียนทับ
             $stmt = $pdo->prepare('
-              INSERT INTO teachers(teacher_code,title,first_name,last_name,first_name_en,last_name_en,email,password_hash,password_plain,subject_group)
-              VALUES (?,?,?,?,?,?,?,?,?,?)
+              INSERT INTO teachers(teacher_code,national_id,username,title,first_name,last_name,first_name_en,last_name_en,email,password_hash,password_plain,subject_group)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
               ON DUPLICATE KEY UPDATE
+                national_id=IF(VALUES(national_id) IS NULL, national_id, VALUES(national_id)),
+                username=IF(VALUES(username) IS NULL, username, VALUES(username)),
                 title=IF(VALUES(title) = "", title, VALUES(title)),
                 first_name=IF(VALUES(first_name) = "", first_name, VALUES(first_name)),
                 last_name=IF(VALUES(last_name) = "", last_name, VALUES(last_name)),
@@ -164,6 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $code  = trim($row[$iCode]  ?? '');
               if ($code === '') continue;
 
+              $nat   = $iNat  !== false ? trim($row[$iNat] ?? '') : '';
+              $username = $iUser !== false ? trim($row[$iUser] ?? '') : '';
               $first = $iFirst !== false ? trim($row[$iFirst] ?? '') : '';
               $last  = $iLast  !== false ? trim($row[$iLast]  ?? '') : '';
               $title = $iTitle !== false ? trim($row[$iTitle] ?? '') : '';
@@ -186,13 +206,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
               // คอลัมน์ NOT NULL (title/ชื่อ/นามสกุล) ใช้ค่าว่าง "" เป็นตัวบอกว่า "คงค่าเดิม"
               // ส่วนคอลัมน์ที่ยอม NULL ใช้ NULL เป็นตัวบอกว่า "คงค่าเดิม"
+              $natVal      = $nat      !== '' ? $nat      : null;
+              $usernameVal = $username !== '' ? $username : null;
               $firstEnVal = $firstEn !== '' ? $firstEn : null;
               $lastEnVal  = $lastEn  !== '' ? $lastEn  : null;
               $emailVal   = ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : null;
               $passHash   = $pass    !== '' ? password_hash($pass, PASSWORD_DEFAULT) : null;
               $passPlain  = $pass    !== '' ? $pass : null;
 
-              $ok = $stmt->execute([$code,$title,$first,$last,$firstEnVal,$lastEnVal,$emailVal,$passHash,$passPlain,$group]);
+              $ok = $stmt->execute([$code,$natVal,$usernameVal,$title,$first,$last,$firstEnVal,$lastEnVal,$emailVal,$passHash,$passPlain,$group]);
               if ($ok) {
                 if ($exists) $updated++; else $done++;
               }
@@ -251,7 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <p class="text-xs text-slate-600">
         ต้องมีคอลัมน์: <code>รหัสประจำตัว/teacher_code</code> (อย่างน้อย)<br>
-        คอลัมน์อื่น: <code>คำนำหน้า/title</code>, <code>ชื่อ/first_name</code>, <code>นามสกุล/last_name</code>, <code>กลุ่มสาระ/subject_group</code> (1–9 หรือพิมพ์ชื่อกลุ่ม), <code>ชื่อภาษาอังกฤษ/first_name_en</code>, <code>นามสกุลภาษาอังกฤษ/last_name_en</code>, <code>อีเมล/email</code>, <code>รหัสผ่าน/password</code><br>
+        คอลัมน์อื่น: <code>รหัสบัตรประชาชน/national_id</code>, <code>ชื่อผู้ใช้/username</code>, <code>คำนำหน้า/title</code>, <code>ชื่อ/first_name</code>, <code>นามสกุล/last_name</code>, <code>กลุ่มสาระ/subject_group</code> (1–9 หรือพิมพ์ชื่อกลุ่ม), <code>ชื่อภาษาอังกฤษ/first_name_en</code>, <code>นามสกุลภาษาอังกฤษ/last_name_en</code>, <code>อีเมล/email</code>, <code>รหัสผ่าน/password</code><br>
         💡 ถ้า <code>รหัสประจำตัว</code> ซ้ำกับที่มีอยู่ ระบบจะ<strong>อัปเดต</strong>ข้อมูลให้ — <strong>ช่องไหนเว้นว่างไว้จะไม่เขียนทับของเดิม</strong> (อัปเดตเฉพาะช่องที่กรอกมา)<br>
         ➕ การ<strong>เพิ่มครูใหม่</strong>ต้องมี ชื่อ + นามสกุล ด้วย (ถ้าเป็นรหัสใหม่แต่ไม่มีชื่อ ระบบจะข้ามแถวนั้น)<br>
         🔑 รหัสผ่านจะถูกเก็บแบบ hash (สำหรับ API) พร้อมสำเนาให้ผู้ดูแลดูย้อนหลังได้ในหน้ารายชื่อครู<br>
@@ -265,8 +287,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="text-xs text-slate-500">
       ตัวอย่างข้อมูล (CSV):<br>
-      รหัสประจำตัว,คำนำหน้า,ชื่อ,นามสกุล,ชื่อภาษาอังกฤษ,นามสกุลภาษาอังกฤษ,อีเมล,รหัสผ่าน,กลุ่มสาระ<br>
-      t00400,นาย,สุทา,โร,Sutha,Ro,sutha@example.com,changeme123,คณิตศาสตร์
+      รหัสประจำตัว,รหัสบัตรประชาชน,ชื่อผู้ใช้,คำนำหน้า,ชื่อ,นามสกุล,ชื่อภาษาอังกฤษ,นามสกุลภาษาอังกฤษ,อีเมล,รหัสผ่าน,กลุ่มสาระ<br>
+      t00400,1212212112121,sutha,นาย,สุทา,โร,Sutha,Ro,sutha@example.com,changeme123,คณิตศาสตร์
     </div>
   </div>
 </div>

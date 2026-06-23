@@ -16,7 +16,7 @@ foreach ($grpStmt->fetchAll() as $r) {
 
 // ดึงครูทั้งหมด
 $stmt = $pdo->query(
-    'SELECT teacher_code, title, first_name, last_name, first_name_en, last_name_en, email, subject_group
+    'SELECT teacher_code, national_id, username, title, first_name, last_name, first_name_en, last_name_en, email, subject_group
      FROM teachers
      ORDER BY teacher_code, first_name, last_name'
 );
@@ -33,7 +33,7 @@ echo "\xEF\xBB\xBF";
 $out = fopen('php://output', 'w');
 
 // Header row (ตรงกับเทมเพลตนำเข้า — คอลัมน์รหัสผ่านเว้นว่างเพื่อไม่เขียนทับเมื่อ re-import)
-fputcsv($out, ['รหัสประจำตัว', 'คำนำหน้า', 'ชื่อ', 'นามสกุล', 'ชื่อภาษาอังกฤษ', 'นามสกุลภาษาอังกฤษ', 'อีเมล', 'รหัสผ่าน', 'กลุ่มสาระ']);
+fputcsv($out, ['รหัสประจำตัว', 'รหัสบัตรประชาชน', 'ชื่อผู้ใช้', 'คำนำหน้า', 'ชื่อ', 'นามสกุล', 'ชื่อภาษาอังกฤษ', 'นามสกุลภาษาอังกฤษ', 'อีเมล', 'รหัสผ่าน', 'กลุ่มสาระ']);
 
 // Data rows
 foreach ($teachers as $t) {
@@ -42,6 +42,8 @@ foreach ($teachers as $t) {
         : '—';
     fputcsv($out, [
         $t['teacher_code'],
+        $t['national_id'] ?? '',
+        $t['username'] ?? '',
         $t['title'],
         $t['first_name'],
         $t['last_name'],
