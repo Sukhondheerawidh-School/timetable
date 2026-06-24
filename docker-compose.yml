@@ -3,12 +3,15 @@ services:
     build: .
     container_name: timetable-app
     ports:
-      - "8080:80"
+      - "8003:80"
     volumes:
-      - /home/sukhon_server/timetable/.env:/var/www/html/.env
+      - ./.env:/var/www/html/.env
     depends_on:
       - timetable-db
     restart: always
+    networks:
+      - default
+      - school-net
 
   timetable-db:
     image: mysql:8
@@ -21,6 +24,9 @@ services:
       MYSQL_PASSWORD: School1234
     volumes:
       - timetable_db_data:/var/lib/mysql
+    networks:
+      - default
+
   phpmyadmin:
     image: phpmyadmin:latest
     container_name: timetable-phpmyadmin
@@ -31,5 +37,13 @@ services:
       PMA_HOST: timetable-db
     depends_on:
       - timetable-db
+    networks:
+      - default
+
 volumes:
   timetable_db_data:
+
+networks:
+  default:
+  school-net:
+    external: true
