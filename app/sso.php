@@ -76,8 +76,8 @@ function sso_jwt_verify(string $token, string $secret): ?array
 function sso_attempt_login(): void
 {
     if (!empty($_SESSION['user'])) return;
-    // ผู้ใช้เพิ่งกด logout ในแอปนี้ — อย่า auto-login ซ้ำทันที
-    if (!empty($_SESSION['sso_skip'])) return;
+    // หมายเหตุ: ไม่มี flag บล็อก SSO — การกัน auto-login วนหลัง logout
+    // ทำที่ logout.php ด้วยการลบ schoolos_token ทิ้งแทน (token ใหม่ = ตั้งใจ login ใหม่)
 
     $secret = (string) (getenv('JWT_SECRET') ?: '');
     if ($secret === '') return; // ไม่ได้เปิดใช้ SSO

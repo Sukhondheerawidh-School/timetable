@@ -17,6 +17,4 @@ if ($viaSchoolOS) {
 }
 
 // ใช้งานแบบ standalone (เข้าตรง ไม่มี token): ไปหน้า login ของ Slot ตามเดิม
-session_start();
-$_SESSION['sso_skip'] = 1;
 redirect('login.php');

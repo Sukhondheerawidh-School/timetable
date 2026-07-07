@@ -137,7 +137,6 @@ function login($username, $password) {
           'role'     => $user['role'],
         ];
         $_SESSION['LAST_ACTIVITY'] = time();
-        unset($_SESSION['sso_skip']); // login มือ = เปิดทาง SSO รอบหน้าอีกครั้ง
         return true;
       }
       login_rate_fail(); // บันทึกว่า login ล้มเหลว
