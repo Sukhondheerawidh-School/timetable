@@ -6,42 +6,64 @@ require_once __DIR__ . '/../app/activity_log.php';
 requireLogin();
 requireAdmin();
 
+tt_teachers_init($pdo);
 tt_buildings_init($pdo);
 $buildings = tt_buildings_list($pdo, true);
+
+$gradeLevels = tt_grade_levels_all($pdo);
 
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!verify_csrf($_POST['csrf'] ?? '')) {
     $err = 'CSRF ไม่ถูกต้อง';
   } else {
-    $code  = trim($_POST['teacher_code'] ?? '');
-    $title = trim($_POST['title'] ?? '');
-    $first = trim($_POST['first_name'] ?? '');
-    $last  = trim($_POST['last_name'] ?? '');
+    $code     = trim($_POST['teacher_code'] ?? '');
+    $nationalId = trim($_POST['national_id'] ?? '');
+    $username = trim($_POST['username'] ?? '');
+    $title    = trim($_POST['title'] ?? '');
+    $first    = trim($_POST['first_name'] ?? '');
+    $last     = trim($_POST['last_name'] ?? '');
+    $firstEn  = trim($_POST['first_name_en'] ?? '');
+    $lastEn   = trim($_POST['last_name_en'] ?? '');
+    $email    = trim($_POST['email'] ?? '');
+    $password = (string)($_POST['password'] ?? '');
     $group = ($_POST['subject_group'] ?? '') !== '' ? (int)$_POST['subject_group'] : null;
     $buildingIds = array_map('intval', (array)($_POST['building_ids'] ?? []));
+    $gradeSel = array_map('strval', (array)($_POST['grade_levels'] ?? []));
 
     if ($code === '' || $first === '' || $last === '') {
       $err = 'กรอก รหัสประจำตัว, ชื่อ, นามสกุล ให้ครบ';
+    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      $err = 'รูปแบบอีเมลไม่ถูกต้อง';
     } elseif (count($buildingIds) > 2) {
       $err = 'เลือกอาคารได้ไม่เกิน 2 อาคาร';
     } else {
       try {
-        $stmt = $pdo->prepare('INSERT INTO teachers(teacher_code, title, first_name, last_name, subject_group) VALUES (?,?,?,?,?)');
-        $stmt->execute([$code, $title, $first, $last, $group]);
+        $passHash  = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : null;
+        $passPlain = $password !== '' ? $password : null;
+        $stmt = $pdo->prepare('INSERT INTO teachers(teacher_code, national_id, username, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, password_plain, subject_group) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+        $stmt->execute([$code, ($nationalId !== '' ? $nationalId : null), ($username !== '' ? $username : null), $title, $first, $last, ($firstEn !== '' ? $firstEn : null), ($lastEn !== '' ? $lastEn : null), ($email !== '' ? $email : null), $passHash, $passPlain, $group]);
 
         $newId = (int)$pdo->lastInsertId();
         if ($newId > 0) {
           tt_teacher_buildings_set($pdo, $newId, $buildingIds);
+          tt_teacher_grade_levels_set($pdo, $newId, $gradeSel);
         }
 
         logCreate('teachers', $newId, [
           'teacher_code' => $code,
+          'national_id' => $nationalId,
+          'username' => $username,
           'title' => $title,
           'first_name' => $first,
           'last_name' => $last,
+          'first_name_en' => $firstEn,
+          'last_name_en' => $lastEn,
+          'email' => $email,
+          'has_password' => $password !== '',
           'subject_group' => $group,
           'building_ids' => $buildingIds,
+          'grade_levels' => $gradeSel,
         ]);
 
         flash_set('success', 'เพิ่มครูสำเร็จ');
@@ -76,6 +98,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสบัตรประชาชน <span class="text-slate-400 font-normal">(เว้นว่างได้)</span></label>
+      <input name="national_id" inputmode="numeric" maxlength="20" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น 1212212112121" value="<?= htmlspecialchars($_POST['national_id'] ?? ''); ?>">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อผู้ใช้ (username)</label>
+      <input name="username" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เว้นว่างได้" value="<?= htmlspecialchars($_POST['username'] ?? ''); ?>">
+    </div>
+
+    <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">อาคารที่ประจำ (เลือกได้ไม่เกิน 2 · ไม่ต้องเลือกก็ได้)</label>
       <?php $selB = array_map('intval', (array)($_POST['building_ids'] ?? [])); ?>
       <?php if (empty($buildings)): ?>
@@ -106,6 +138,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label class="block text-sm font-medium text-slate-700 mb-1.5">นามสกุล</label>
       <input name="last_name" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" required value="<?= htmlspecialchars($_POST['last_name'] ?? ''); ?>">
     </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">ชื่อจริง (ภาษาอังกฤษ)</label>
+        <input name="first_name_en" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น Somchai" value="<?= htmlspecialchars($_POST['first_name_en'] ?? ''); ?>">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">นามสกุล (ภาษาอังกฤษ)</label>
+        <input name="last_name_en" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น Jaidee" value="<?= htmlspecialchars($_POST['last_name_en'] ?? ''); ?>">
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">อีเมล</label>
+      <input type="email" name="email" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เช่น somchai@example.com" value="<?= htmlspecialchars($_POST['email'] ?? ''); ?>">
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">รหัสผ่าน <span class="text-slate-400 font-normal">(สำหรับเชื่อมต่อ API ระบบอื่น)</span></label>
+      <input type="password" name="password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none transition text-sm" placeholder="เว้นว่างได้ถ้ายังไม่กำหนด">
+      <p class="text-xs text-slate-500 mt-1">ระบบเก็บแบบ hash สำหรับ API และเก็บสำเนาให้ผู้ดูแลดูย้อนหลังได้ในหน้ารายชื่อครู</p>
+    </div>
 
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1.5">กลุ่มสาระการเรียนรู้</label>
@@ -117,6 +168,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </option>
         <?php endforeach; ?>
       </select>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1.5">ระดับชั้นที่สอน</label>
+      <?php $selG = array_map('strval', (array)($_POST['grade_levels'] ?? [])); ?>
+      <?php if (empty($gradeLevels)): ?>
+        <div class="text-xs text-slate-400">— ยังไม่มีชั้นเรียนในระบบ —</div>
+      <?php else: ?>
+        <div class="flex flex-wrap gap-3">
+          <?php foreach ($gradeLevels as $g): ?>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" name="grade_levels[]" value="<?= htmlspecialchars($g); ?>"
+                <?= in_array($g, $selG, true) ? 'checked' : ''; ?>
+                class="w-4 h-4 rounded border-slate-300 accent-indigo-600">
+              <span class="text-sm text-slate-700"><?= htmlspecialchars($g); ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">ติ๊กระดับชั้นที่ครูสอน — เมื่อมีการจัดกำลังสอนแล้ว ระดับชั้นนั้นจะถูกติ๊กอัตโนมัติและล็อกไว้</div>
+      <?php endif; ?>
     </div>
 
     <div class="flex items-center gap-2">

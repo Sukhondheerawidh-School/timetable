@@ -3,6 +3,7 @@ require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/activity_log.php';
+require_once __DIR__ . '/../app/timetable_optimizer.php'; // ใช้ tt_subject_family() ตรวจวิชาหลัก/เสริม
 
 requireLogin();
 
@@ -296,46 +297,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $chkActC->execute([$year_id,$term_no,$day,$period_no,$class_of]); 
         if ($chkActC->fetch()) throw new Exception('ทับกิจกรรมรวมของชั้น');
 
-        // ✅ เช็ควิชา+ครูซ้ำในวันเดียวกัน (ถ้าครูคนละคน ไม่ถือว่าซ้ำ)
-        // รวม co-teaching: ถ้าครูคนใดคนหนึ่งในชุดครูของ load นี้ซ้ำ จะถือว่าซ้ำ
-        $inTeachers = implode(',', array_fill(0, count($teacher_ids), '?'));
-        $chkSameSubjTeacherToday = $pdo->prepare("
-          SELECT 1
-          FROM timetable_slots ts
-          LEFT JOIN timetable_slot_teachers st ON st.slot_id = ts.id
-          WHERE ts.academic_year_id=?
-            AND ts.term_no=?
-            AND ts.day_of_week=?
-            AND ts.class_id=?
-            AND ts.subject_name=?
-            AND (
-              ts.teacher_id IN ($inTeachers)
-              OR st.teacher_id IN ($inTeachers)
-            )
-          LIMIT 1
-        ");
-        $params = array_merge([$year_id, $term_no, $day, $class_of, $subject], $teacher_ids, $teacher_ids);
-        $chkSameSubjTeacherToday->execute($params);
+        // ====================================================================
+        // ตรวจ "ข้อควรระวัง" (soft warnings) — รวมทุกเคสไว้ใน modal เดียว
+        // ผู้ใช้กดยืนยันครั้งเดียว (force_add) เพื่อลงต่อ โดยเห็นครบทุกคำเตือน
+        // ====================================================================
 
-        if ($chkSameSubjTeacherToday->fetch() && !$force_add) {
-          $_SESSION['confirm_add_data'] = [
-            'load_id'    => $load_id,
-            'day_of_week'=> $day,
-            'period_no'  => $period_no,
-            'span'       => $span,
-            'room_id'    => $picked_room_id,
-            'subject'    => $subject,
-            'day_name'   => th_dow($day),
-            'warnings'   => [
-              ['type' => 'same_subj', 'msg' => '➡️ วิชา "' . $subject . '" มีอยู่ในวัน' . th_dow($day) . 'แล้ว']
-            ]
-          ];
-          flash_set('warning', 'วิชา "' . $subject . '" มีในวัน' . th_dow($day) . 'แล้ว');
-          redirect($returnUrl);
-        }
-
-        // ✅ ตรวจข้ามตึก: ครูต้องสอนคาบติดกันในอาคารต่างกัน
-        // ดึง building ของห้องเรียนประจำที่จะลง (ผ่าน homeroom_room_id)
+        // building ของห้องเรียนประจำที่จะลง (ใช้ตรวจข้ามตึก)
         $curBuilding = '';
         if (!empty($L['homeroom_room_id'])) {
           $stBldg = $pdo->prepare("SELECT COALESCE(building,'') FROM rooms WHERE id=? LIMIT 1");
@@ -343,73 +310,158 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           $curBuilding = (string)($stBldg->fetchColumn() ?: '');
         }
 
-        $crossWarn = [];
-        if ($curBuilding !== '' && !$force_add) {
-          // คาบติดกันทั้งก่อน span และหลัง span
-          $neighborPeriods = [];
-          if ($period_no > 1) $neighborPeriods[] = $period_no - 1;
-          $neighborPeriods[] = $period_no + $span;
+        // --- ตรวจเวรครู (ทำเสมอ ไม่ว่าจะ force หรือไม่ — เพื่อบังคับสิทธิ์ และเก็บไว้ลบตอน insert) ---
+        $canEditDuty = canEditSection('duty');
+        $periodsRangeDuty = range($period_no, $period_no + $span - 1);
+        $inTd0 = implode(',', array_fill(0, count($teacher_ids), '?'));
+        $inPd0 = implode(',', array_fill(0, count($periodsRangeDuty), '?'));
+        $stDutyChk = $pdo->prepare("
+          SELECT dmp.post_name, dmts.period_no, CONCAT(t.first_name,' ',t.last_name) AS teacher_name
+          FROM duty_term_assignments dta
+          JOIN duty_master_shifts dms ON dms.id = dta.duty_master_shift_id
+          JOIN duty_master_time_slots dmts ON dmts.id = dms.duty_time_slot_id
+          JOIN duty_master_posts dmp ON dmp.id = dms.duty_post_id
+          JOIN teachers t ON t.id = dta.teacher_id
+          WHERE dta.academic_year_id=? AND dta.term_no=? AND dms.day_of_week=?
+            AND dta.teacher_id IN ($inTd0) AND dmts.period_no IN ($inPd0)
+          ORDER BY dmts.period_no
+        ");
+        $stDutyChk->execute(array_merge([$year_id, $term_no, $day], $teacher_ids, $periodsRangeDuty));
+        $dutyRows = $stDutyChk->fetchAll();
 
-          foreach ($teacher_ids as $chkTid) {
-            foreach ($neighborPeriods as $np) {
-              // ตรวจจาก timetable_slots (คาบสอนปกติ)
-              $stNb = $pdo->prepare("
-                SELECT COALESCE(r.building,'') AS building
-                FROM timetable_slots ts
-                JOIN classes c ON c.id = ts.class_id
-                LEFT JOIN rooms r ON r.id = c.homeroom_room_id
-                WHERE ts.academic_year_id=? AND ts.term_no=?
-                  AND ts.day_of_week=? AND ts.period_no=?
-                  AND (
-                    ts.teacher_id=?
-                    OR EXISTS (SELECT 1 FROM timetable_slot_teachers st2 WHERE st2.slot_id=ts.id AND st2.teacher_id=?)
-                  )
-                LIMIT 1
-              ");
-              $stNb->execute([$year_id, $term_no, $day, $np, $chkTid, $chkTid]);
-              $nbRow = $stNb->fetch();
-              if ($nbRow && $nbRow['building'] !== '' && $nbRow['building'] !== $curBuilding) {
-                $crossWarn[] = $nbRow['building'];
-                break 2;
-              }
-
-              // ตรวจจาก activity_groups (กิจกรรม)
-              $stActNb = $pdo->prepare("
-                SELECT COALESCE(r.building,'') AS building
-                FROM activity_groups ag
-                JOIN activity_teachers at2 ON at2.activity_id=ag.id AND at2.teacher_id=?
-                LEFT JOIN rooms r ON r.id=ag.room_id
-                WHERE ag.academic_year_id=? AND ag.term_no=?
-                  AND ag.day_of_week=? AND ag.period_no=?
-                  AND r.building IS NOT NULL AND r.building <> ''
-                LIMIT 1
-              ");
-              $stActNb->execute([$chkTid, $year_id, $term_no, $day, $np]);
-              $actRow = $stActNb->fetch();
-              if ($actRow && $actRow['building'] !== '' && $actRow['building'] !== $curBuilding) {
-                $crossWarn[] = $actRow['building'];
-                break 2;
-              }
-            }
-          }
+        // ครูติดเวร แต่ผู้ใช้ไม่มีสิทธิ์จัดการเวร → บล็อกการลงคาบ (ลบเวรไม่ได้)
+        if ($dutyRows && !$canEditDuty) {
+          $names = [];
+          foreach ($dutyRows as $dr) $names[] = $dr['teacher_name'] . ' (เวร "' . $dr['post_name'] . '" คาบ ' . (int)$dr['period_no'] . ')';
+          throw new Exception('ครูติดเวรในคาบนี้: ' . implode(', ', $names) . ' — คุณไม่มีสิทธิ์จัดการเวร จึงลงทับไม่ได้ กรุณาให้ผู้ดูแลเวรปลดเวรก่อน');
         }
 
-        if ($crossWarn && !$force_add) {
-          $otherBldg = implode(', ', array_unique($crossWarn));
-          $_SESSION['confirm_add_data'] = [
-            'load_id'    => $load_id,
-            'day_of_week'=> $day,
-            'period_no'  => $period_no,
-            'span'       => $span,
-            'room_id'    => $picked_room_id,
-            'subject'    => $subject,
-            'day_name'   => th_dow($day),
-            'warnings'   => [
-              ['type' => 'cross_building', 'msg' => '➡️ ครูต้องสอนคาบติดกันคนละอาคาร (อาคารปัจจุบัน: ' . $curBuilding . ' / คาบติดกัน: ' . $otherBldg . ')']
-            ]
-          ];
-          flash_set('warning', 'ครูต้องข้ามตึกในคาบติดกัน');
-          redirect($returnUrl);
+        if (!$force_add) {
+          $warnings = [];
+
+          // 1) วิชา+ครู ซ้ำในวันเดียวกัน (รวม co-teaching)
+          $inTeachers = implode(',', array_fill(0, count($teacher_ids), '?'));
+          $chkSameSubjTeacherToday = $pdo->prepare("
+            SELECT 1
+            FROM timetable_slots ts
+            LEFT JOIN timetable_slot_teachers st ON st.slot_id = ts.id
+            WHERE ts.academic_year_id=? AND ts.term_no=? AND ts.day_of_week=? AND ts.class_id=? AND ts.subject_name=?
+              AND (ts.teacher_id IN ($inTeachers) OR st.teacher_id IN ($inTeachers))
+            LIMIT 1
+          ");
+          $chkSameSubjTeacherToday->execute(array_merge([$year_id, $term_no, $day, $class_of, $subject], $teacher_ids, $teacher_ids));
+          if ($chkSameSubjTeacherToday->fetch()) {
+            $warnings[] = ['type' => 'same_subj', 'msg' => '➡️ วิชา "' . $subject . '" มีอยู่ในวัน' . th_dow($day) . 'แล้ว'];
+          }
+
+          // 2) ครูข้ามตึกในคาบติดกัน
+          if ($curBuilding !== '') {
+            $crossWarn = [];
+            $neighborPeriods = [];
+            if ($period_no > 1) $neighborPeriods[] = $period_no - 1;
+            $neighborPeriods[] = $period_no + $span;
+
+            foreach ($teacher_ids as $chkTid) {
+              foreach ($neighborPeriods as $np) {
+                $stNb = $pdo->prepare("
+                  SELECT COALESCE(r.building,'') AS building
+                  FROM timetable_slots ts
+                  JOIN classes c ON c.id = ts.class_id
+                  LEFT JOIN rooms r ON r.id = c.homeroom_room_id
+                  WHERE ts.academic_year_id=? AND ts.term_no=?
+                    AND ts.day_of_week=? AND ts.period_no=?
+                    AND (
+                      ts.teacher_id=?
+                      OR EXISTS (SELECT 1 FROM timetable_slot_teachers st2 WHERE st2.slot_id=ts.id AND st2.teacher_id=?)
+                    )
+                  LIMIT 1
+                ");
+                $stNb->execute([$year_id, $term_no, $day, $np, $chkTid, $chkTid]);
+                $nbRow = $stNb->fetch();
+                if ($nbRow && $nbRow['building'] !== '' && $nbRow['building'] !== $curBuilding) {
+                  $crossWarn[] = $nbRow['building'];
+                  break 2;
+                }
+
+                $stActNb = $pdo->prepare("
+                  SELECT COALESCE(r.building,'') AS building
+                  FROM activity_groups ag
+                  JOIN activity_teachers at2 ON at2.activity_id=ag.id AND at2.teacher_id=?
+                  LEFT JOIN rooms r ON r.id=ag.room_id
+                  WHERE ag.academic_year_id=? AND ag.term_no=?
+                    AND ag.day_of_week=? AND ag.period_no=?
+                    AND r.building IS NOT NULL AND r.building <> ''
+                  LIMIT 1
+                ");
+                $stActNb->execute([$chkTid, $year_id, $term_no, $day, $np]);
+                $actRow = $stActNb->fetch();
+                if ($actRow && $actRow['building'] !== '' && $actRow['building'] !== $curBuilding) {
+                  $crossWarn[] = $actRow['building'];
+                  break 2;
+                }
+              }
+            }
+            if ($crossWarn) {
+              $otherBldg = implode(', ', array_unique($crossWarn));
+              $warnings[] = ['type' => 'cross_building', 'msg' => '➡️ ครูต้องสอนคาบติดกันคนละอาคาร (อาคารปัจจุบัน: ' . $curBuilding . ' / คาบติดกัน: ' . $otherBldg . ')'];
+            }
+          }
+
+          // 3) วิชากลุ่มเดียวกัน (หลัก/เสริม) เรียนติดกัน
+          $myFamily = tt_subject_family($subject);
+          if ($myFamily !== null) {
+            $adjFamilyWarn = [];
+            $neighborPeriods = [];
+            if ($period_no > 1) $neighborPeriods[] = $period_no - 1;
+            $neighborPeriods[] = $period_no + $span;
+
+            $stAdjFam = $pdo->prepare("
+              SELECT period_no, subject_name
+              FROM timetable_slots
+              WHERE academic_year_id=? AND term_no=? AND day_of_week=? AND class_id=? AND period_no=?
+              LIMIT 1
+            ");
+            foreach ($neighborPeriods as $np) {
+              if ($np < 1 || $np > $maxPeriod) continue;
+              $stAdjFam->execute([$year_id, $term_no, $day, $class_of, $np]);
+              if ($nbRow = $stAdjFam->fetch()) {
+                $nbFamily = tt_subject_family($nbRow['subject_name']);
+                if ($nbFamily === $myFamily && $nbRow['subject_name'] !== $subject) {
+                  $nbName = (string)$nbRow['subject_name'];
+                  $sep = mb_strrpos($nbName, ' - ');
+                  if ($sep !== false) $nbName = mb_substr($nbName, $sep + 3);
+                  $adjFamilyWarn[] = 'คาบ ' . (int)$nbRow['period_no'] . ' (' . $nbName . ')';
+                }
+              }
+            }
+            if ($adjFamilyWarn) {
+              $warnings[] = ['type' => 'adj_family', 'msg' => '➡️ คาบติดกันเป็นวิชากลุ่ม "' . $myFamily . '" เหมือนกัน (' . implode(', ', $adjFamilyWarn) . ') — แนะนำให้เว้นอย่างน้อย 1 คาบเพื่อให้พักสมอง'];
+            }
+          }
+
+          // 4) ครูติดเวร (มีสิทธิ์จัดการเวรแล้ว — ถ้ายืนยันจะลบเวรให้ตอน insert)
+          if ($dutyRows) {
+            $dutyMsgs = [];
+            foreach ($dutyRows as $dr) {
+              $dutyMsgs[] = 'ครู ' . $dr['teacher_name'] . ' เป็นเวร "' . $dr['post_name'] . '" คาบ ' . (int)$dr['period_no'];
+            }
+            $warnings[] = ['type' => 'duty_conflict', 'msg' => '➡️ ' . implode(' · ', $dutyMsgs) . ' — ถ้าลงคาบนี้ ระบบจะลบเวรดังกล่าวออกให้'];
+          }
+
+          if ($warnings) {
+            $_SESSION['confirm_add_data'] = [
+              'load_id'    => $load_id,
+              'day_of_week'=> $day,
+              'period_no'  => $period_no,
+              'span'       => $span,
+              'room_id'    => $picked_room_id,
+              'subject'    => $subject,
+              'day_name'   => th_dow($day),
+              'warnings'   => $warnings,
+            ];
+            flash_set('warning', 'พบข้อควรระวัง ' . count($warnings) . ' รายการ');
+            redirect($returnUrl);
+          }
         }
 
         $insSlot=$pdo->prepare('INSERT INTO timetable_slots
@@ -464,10 +516,37 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           foreach ($teacher_ids as $tid) $insMap->execute([$slot_id,$tid]);
           $used++;
         }
+
+        // ✅ ลบเวรของครูที่ชนกับคาบที่เพิ่งลง (กรณีผู้ใช้ยืนยันให้ลงทับเวรผ่าน force_add)
+        // ในเส้นทางปกติที่ไม่มีเวรชน คิวรีนี้จะไม่เจออะไร = ไม่มีผลข้างเคียง
+        $dutiesToRemove = [];
+        $periodsRangeDel = range($period_no, $period_no + $span - 1);
+        $inTd = implode(',', array_fill(0, count($teacher_ids), '?'));
+        $inPd = implode(',', array_fill(0, count($periodsRangeDel), '?'));
+        $stDutyFind = $pdo->prepare("
+          SELECT dta.id, dta.academic_year_id, dta.term_no, dta.duty_master_shift_id, dta.teacher_id
+          FROM duty_term_assignments dta
+          JOIN duty_master_shifts dms ON dms.id = dta.duty_master_shift_id
+          JOIN duty_master_time_slots dmts ON dmts.id = dms.duty_time_slot_id
+          WHERE dta.academic_year_id=? AND dta.term_no=? AND dms.day_of_week=?
+            AND dta.teacher_id IN ($inTd) AND dmts.period_no IN ($inPd)
+        ");
+        $stDutyFind->execute(array_merge([$year_id, $term_no, $day], $teacher_ids, $periodsRangeDel));
+        $dutiesToRemove = $stDutyFind->fetchAll();
+        if ($dutiesToRemove) {
+          $delDuty = $pdo->prepare("DELETE FROM duty_term_assignments WHERE id=?");
+          foreach ($dutiesToRemove as $dd) $delDuty->execute([(int)$dd['id']]);
+        }
+
         $pdo->commit();
-        
+
         // ✅ ลบข้อมูล confirm หลังจากบันทึกสำเร็จ
         unset($_SESSION['confirm_add_data']);
+
+        // ✅ บันทึก log การลบเวร (หลัง commit)
+        foreach ($dutiesToRemove as $dd) {
+          logActivity('duty_unassign', 'duty_term_assignments', (int)$dd['id'], $dd, null);
+        }
         
         // บันทึก log
         $yearLabel = '';
@@ -506,7 +585,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
           ]
         );
         
-        flash_set('success','บันทึกคาบเรียบร้อย'); redirect($returnUrl);
+        $okMsg = 'บันทึกคาบเรียบร้อย';
+        if (!empty($dutiesToRemove)) $okMsg .= ' · ลบเวรครูที่ชนคาบ '.count($dutiesToRemove).' รายการ';
+        flash_set('success',$okMsg); redirect($returnUrl);
       } catch(Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         $err = 'เพิ่มไม่ได้: '.$e->getMessage();
@@ -561,6 +642,22 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         flash_set('success','ลบคาบแล้ว'); redirect($returnUrl);
       } catch(Throwable $e) {
         $err='ลบไม่สำเร็จ: '.$e->getMessage();
+      }
+    } elseif ($action==='delete_duty') {
+      // ✅ ลบเวรของครูจากหน้าตาราง (มุมมองตามครู) — ต้องมีสิทธิ์จัดการเวร
+      try {
+        if (!canEditSection('duty')) throw new Exception('คุณไม่มีสิทธิ์จัดการเวร');
+        $assignment_id = (int)($_POST['assignment_id'] ?? 0);
+        if ($assignment_id) {
+          $stD = $pdo->prepare('SELECT * FROM duty_term_assignments WHERE id=?');
+          $stD->execute([$assignment_id]);
+          $dRow = $stD->fetch();
+          $pdo->prepare('DELETE FROM duty_term_assignments WHERE id=?')->execute([$assignment_id]);
+          if ($dRow) logActivity('duty_unassign', 'duty_term_assignments', $assignment_id, $dRow, null);
+        }
+        flash_set('success','ลบเวรแล้ว'); redirect($returnUrl);
+      } catch(Throwable $e) {
+        $err='ลบเวรไม่สำเร็จ: '.$e->getMessage();
       }
     }
   }

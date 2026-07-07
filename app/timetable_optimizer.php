@@ -1,6 +1,36 @@
 <?php
 // filepath: c:\xampp\htdocs\timetable\app\timetable_optimizer.php
 
+/**
+ * หา "กลุ่มวิชา" (family) ของวิชาหลัก/เสริม
+ * วิชาที่ลงท้ายด้วย "หลัก" หรือ "เสริม" ถือว่าอยู่กลุ่มเดียวกันถ้า base ตรงกัน
+ *   เช่น "คณิตหลัก" / "คณิตเสริม" → base = "คณิต"
+ *        "วิทย์หลัก" / "วิทย์เสริม" → base = "วิทย์"
+ * ใช้กันไม่ให้คาบหลัก/เสริมของวิชาเดียวกันมาเรียนติดกัน (เด็กได้พักสมอง)
+ *
+ * รองรับ label ทั้งแบบ "NAME" และ "CODE - NAME" (จะดูเฉพาะส่วนชื่อวิชา)
+ * คืน null ถ้าวิชานี้ไม่ใช่วิชาหลัก/เสริม
+ */
+function tt_subject_family(?string $label): ?string {
+  if ($label === null || $label === '') return null;
+  // ถ้าเป็นรูปแบบ "CODE - NAME" ให้ใช้เฉพาะส่วนชื่อ (หลัง ' - ' ตัวสุดท้าย)
+  $name = $label;
+  $sepPos = mb_strrpos($label, ' - ');
+  if ($sepPos !== false) {
+    $name = mb_substr($label, $sepPos + 3);
+  }
+  $name = trim($name);
+
+  foreach (['หลัก', 'เสริม'] as $suffix) {
+    $len = mb_strlen($suffix);
+    if (mb_substr($name, -$len) === $suffix) {
+      $base = trim(mb_substr($name, 0, mb_strlen($name) - $len));
+      if ($base !== '') return $base;
+    }
+  }
+  return null;
+}
+
 function buildTimetableMaps($pdo, $year_id, $term_no) {
   // ✅ ดึงข้อมูลทั้งหมดมาทำ Map
   $existingSlots = $pdo->prepare("
@@ -23,6 +53,9 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
   $roomBusyMap = [];
   $subjectDayMap = [];
   $subjectTeacherDayMap = [];
+  // classPeriodSubject[$day][$period][$cid] = subject_name (label)
+  // ใช้ตรวจว่าคาบข้างเคียงเป็นวิชากลุ่มเดียวกัน (หลัก/เสริม) หรือไม่
+  $classPeriodSubjectMap = [];
   // teacherPeriodBuilding[$day][$period][$tid] = building (จาก homeroom_room_id → rooms.building)
   // ใช้ตรวจ cross-building ว่าครูสอนในอาคารไหนจริงๆ ในคาบนั้น
   $teacherPeriodBuildingMap = [];
@@ -46,6 +79,7 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
     }
     if ($subj) $subjectDayMap[$d][$cid][$subj] = true;
     if ($subj && $tid) $subjectTeacherDayMap[$d][$cid][$subj][$tid] = true;
+    if ($subj) $classPeriodSubjectMap[$d][$p][$cid] = $subj;
   }
 
   // ✅ ดึงกิจกรรมทั้งหมด (รวม building ของสถานที่กิจกรรม)
@@ -114,12 +148,37 @@ function buildTimetableMaps($pdo, $year_id, $term_no) {
     }
   }
 
+  // ✅ ดึงเวรครู (duty) เพื่อให้ตัวจัดอัตโนมัติหลบคาบที่ครูติดเวร
+  // teacherDuty[$day][$period][$tid] = true
+  $teacherDutyMap = [];
+  try {
+    $dutyStmt = $pdo->prepare("
+      SELECT dms.day_of_week, dmts.period_no, dta.teacher_id
+      FROM duty_term_assignments dta
+      JOIN duty_master_shifts dms ON dms.id = dta.duty_master_shift_id
+      JOIN duty_master_time_slots dmts ON dmts.id = dms.duty_time_slot_id
+      WHERE dta.academic_year_id = ? AND dta.term_no = ? AND dmts.period_no IS NOT NULL
+    ");
+    $dutyStmt->execute([$year_id, $term_no]);
+    foreach ($dutyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+      $d = (int)$row['day_of_week'];
+      $p = (int)$row['period_no'];
+      $tid = (int)$row['teacher_id'];
+      if ($tid) $teacherDutyMap[$d][$p][$tid] = true;
+    }
+  } catch (Throwable $e) {
+    // ถ้าไม่มีตารางเวร (เช่นการติดตั้งเก่า) ให้ข้ามไป
+    $teacherDutyMap = [];
+  }
+
   return [
     'classBusy' => $classBusyMap,
     'teacherBusy' => $teacherBusyMap,
+    'teacherDuty' => $teacherDutyMap,
     'roomBusy' => $roomBusyMap,
     'subjectDay' => $subjectDayMap,
     'subjectTeacherDay' => $subjectTeacherDayMap,
+    'classPeriodSubject' => $classPeriodSubjectMap,
     'classActivity' => $classActivityMap,
     'teacherActivity' => $teacherActivityMap,
     'teacherConstraints' => $teacherConstraints,
@@ -147,6 +206,7 @@ function updateMapsAfterInsert(&$maps, $day, $period, $class_id, $teacher_ids, $
   }
   
   $maps['subjectDay'][$day][$class_id][$subject_name] = true;
+  $maps['classPeriodSubject'][$day][$period][$class_id] = $subject_name;
 
   foreach ($teacher_ids as $tid) {
     $maps['subjectTeacherDay'][$day][$class_id][$subject_name][(int)$tid] = true;

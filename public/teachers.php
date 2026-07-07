@@ -5,6 +5,8 @@ require_once __DIR__ . '/../app/db.php';
 requireLogin();
 requireAdmin();
 
+tt_teachers_init($pdo);
+
 // รับพารามิเตอร์ฟิลเตอร์
 $kw    = trim($_GET['q'] ?? '');
 $group = (isset($_GET['group']) && $_GET['group'] !== '') ? (int)$_GET['group'] : null;
@@ -16,12 +18,12 @@ if ($group !== null) $_filter_parts['group'] = $group;
 $_filter_qs = $_filter_parts ? '?' . http_build_query($_filter_parts) : '';
 
 // สร้าง SQL + เงื่อนไข
-$sql = 'SELECT id, teacher_code, title, first_name, last_name, subject_group, created_at
+$sql = 'SELECT id, teacher_code, username, title, first_name, last_name, first_name_en, last_name_en, email, password_hash, password_plain, subject_group, created_at
         FROM teachers WHERE 1=1';
 $params = [];
 
 if ($kw !== '') {
-  $sql .= ' AND (teacher_code LIKE :kw OR first_name LIKE :kw OR last_name LIKE :kw)';
+  $sql .= ' AND (teacher_code LIKE :kw OR username LIKE :kw OR first_name LIKE :kw OR last_name LIKE :kw OR first_name_en LIKE :kw OR last_name_en LIKE :kw OR email LIKE :kw)';
   $params['kw'] = '%'.$kw.'%';
 }
 if ($group !== null) {
@@ -35,6 +37,12 @@ $sql .= ' ORDER BY teacher_code, first_name, last_name';
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $teachers = $stmt->fetchAll();
+
+// ระดับชั้นที่สอน: auto (จากตารางสอนปีปัจจุบัน) + manual (ติ๊กเอง) — ดึงครั้งเดียวแบบ bulk
+$activeYearId = tt_active_year_id($pdo);
+$gradeMaps    = tt_teacher_grade_levels_maps($pdo, $activeYearId);
+$gradeOrder   = tt_grade_levels_all($pdo); // ลำดับไว้เรียง chip
+$gradeRank    = array_flip($gradeOrder);
 
 $flash = flash_get();
 
@@ -51,9 +59,13 @@ $groupLabels = teacher_group_options();
       <p class="text-sm text-slate-500 mt-1">ข้อมูลครูผู้สอนทั้งหมด</p>
     </div>
     <div class="flex gap-2">
-      <a href="<?= url('teacher_export.php'); ?>" 
+      <a href="<?= url('teacher_export.php'); ?>"
          class="px-4 py-2.5 rounded-xl border-2 border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors text-sm font-medium">
         📥 Export CSV
+      </a>
+      <a href="<?= url('teacher_export2.php'); ?>"
+         class="px-4 py-2.5 rounded-xl border-2 border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 transition-colors text-sm font-medium">
+        📋 Export รายชื่อ
       </a>
       <a href="<?= url('teacher_template.php'); ?>" 
          class="px-4 py-2.5 rounded-xl border-2 border-slate-300 hover:bg-slate-50 transition-colors text-sm font-medium text-slate-700">
@@ -119,11 +131,13 @@ $groupLabels = teacher_group_options();
       <thead class="bg-gradient-to-r from-slate-50 to-slate-100 border-b-2 border-slate-200">
         <tr>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">🆔 รหัสประจำตัว</th>
+          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">👤 ชื่อผู้ใช้</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">คำนำหน้า</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">ชื่อ</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">นามสกุล</th>
+          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">✉️ อีเมล / 🔑 รหัสผ่าน</th>
           <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">📚 กลุ่มสาระ</th>
-          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">📅 สร้างเมื่อ</th>
+          <th class="text-left px-4 py-4 text-sm font-semibold text-slate-700">🎓 ระดับชั้นที่สอน</th>
           <th class="text-right px-4 py-4 text-sm font-semibold text-slate-700">⚙️ การทำงาน</th>
         </tr>
       </thead>
@@ -133,15 +147,68 @@ $groupLabels = teacher_group_options();
           <td class="px-4 py-4">
             <span class="font-semibold text-slate-800"><?= htmlspecialchars($t['teacher_code']); ?></span>
           </td>
+          <td class="px-4 py-4">
+            <?php if (!empty($t['username'])): ?>
+              <code class="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700"><?= htmlspecialchars($t['username']); ?></code>
+            <?php else: ?>
+              <span class="text-xs text-slate-300">—</span>
+            <?php endif; ?>
+          </td>
           <td class="px-4 py-4 text-slate-600"><?= htmlspecialchars($t['title']); ?></td>
-          <td class="px-4 py-4 font-medium text-slate-800"><?= htmlspecialchars($t['first_name']); ?></td>
-          <td class="px-4 py-4 font-medium text-slate-800"><?= htmlspecialchars($t['last_name']); ?></td>
+          <td class="px-4 py-4 font-medium text-slate-800">
+            <?= htmlspecialchars($t['first_name']); ?>
+            <?php if (!empty($t['first_name_en'])): ?><div class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($t['first_name_en']); ?></div><?php endif; ?>
+          </td>
+          <td class="px-4 py-4 font-medium text-slate-800">
+            <?= htmlspecialchars($t['last_name']); ?>
+            <?php if (!empty($t['last_name_en'])): ?><div class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($t['last_name_en']); ?></div><?php endif; ?>
+          </td>
+          <td class="px-4 py-4">
+            <?php if (!empty($t['email'])): ?>
+              <div class="text-sm text-slate-600 break-all">✉️ <?= htmlspecialchars($t['email']); ?></div>
+            <?php else: ?>
+              <div class="text-xs text-slate-300">— ไม่มีอีเมล —</div>
+            <?php endif; ?>
+            <?php if (!empty($t['password_plain'])): ?>
+              <div class="mt-1 flex items-center gap-1.5">
+                <span class="text-xs text-amber-700">🔑</span>
+                <code class="tt-pwd font-mono text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 select-all" data-pwd="<?= htmlspecialchars($t['password_plain']); ?>">••••••••</code>
+                <button type="button" class="tt-pwd-toggle text-xs font-medium text-indigo-600 hover:text-indigo-800" data-shown="0">👁️ ดู</button>
+              </div>
+            <?php elseif (!empty($t['password_hash'])): ?>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" title="มีรหัสผ่าน แต่ตั้งไว้ก่อนรองรับการดูย้อนหลัง — ตั้งรหัสใหม่หรือ import ซ้ำเพื่อให้ดูได้">🔑 มีรหัสผ่าน (ดูไม่ได้)</span>
+            <?php else: ?>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-400 border border-slate-200">ยังไม่ตั้งรหัสผ่าน</span>
+            <?php endif; ?>
+          </td>
           <td class="px-4 py-4">
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
               <?= htmlspecialchars(teacher_group_label((int)$t['subject_group'])); ?>
             </span>
           </td>
-          <td class="px-4 py-4 text-slate-600 text-xs"><?= th_date($t['created_at']); ?></td>
+          <td class="px-4 py-4">
+            <?php
+              $tid       = (int)$t['id'];
+              $autoG     = $gradeMaps['auto'][$tid]   ?? [];
+              $manualG   = $gradeMaps['manual'][$tid] ?? [];
+              $autoSet   = array_flip($autoG);
+              $allG      = array_values(array_unique(array_merge($autoG, $manualG)));
+              usort($allG, fn($a, $b) => ($gradeRank[$a] ?? 999) <=> ($gradeRank[$b] ?? 999));
+            ?>
+            <?php if ($allG): ?>
+              <div class="flex flex-wrap gap-1">
+                <?php foreach ($allG as $g): ?>
+                  <?php $isAuto = isset($autoSet[$g]); ?>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?= $isAuto ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'; ?>"
+                        <?= $isAuto ? 'title="สอนอยู่ในตารางสอน"' : 'title="ติ๊กเอง"'; ?>>
+                    <?= htmlspecialchars($g); ?><?= $isAuto ? ' 🔒' : ''; ?>
+                  </span>
+                <?php endforeach; ?>
+              </div>
+            <?php else: ?>
+              <span class="text-xs text-slate-300">—</span>
+            <?php endif; ?>
+          </td>
           <td class="px-4 py-4 text-right">
             <div class="flex items-center justify-end gap-2">
               <a href="<?= url('teacher_edit.php?id='.(int)$t['id'].(($kw!=='')?'&from_q='.urlencode($kw):'').(($group!==null)?'&from_group='.(int)$group:'')); ?>" 
@@ -163,7 +230,7 @@ $groupLabels = teacher_group_options();
         <?php endforeach; ?>
         <?php if (!$teachers): ?>
         <tr>
-          <td colspan="7" class="px-4 py-12 text-center">
+          <td colspan="9" class="px-4 py-12 text-center">
             <div class="text-6xl mb-4">👨‍🏫</div>
             <p class="text-slate-500 text-lg">ยังไม่มีข้อมูลครู</p>
           </td>
@@ -195,6 +262,23 @@ document.addEventListener('DOMContentLoaded', () => {
     q.value = '';
     grp.value = '';
     form.submit();
+  });
+
+  // 👁️ สลับแสดง/ซ่อนรหัสผ่าน
+  document.querySelectorAll('.tt-pwd-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const code = btn.parentElement.querySelector('.tt-pwd');
+      const shown = btn.dataset.shown === '1';
+      if (shown) {
+        code.textContent = '••••••••';
+        btn.textContent = '👁️ ดู';
+        btn.dataset.shown = '0';
+      } else {
+        code.textContent = code.dataset.pwd;
+        btn.textContent = '🙈 ซ่อน';
+        btn.dataset.shown = '1';
+      }
+    });
   });
 });
 </script>
