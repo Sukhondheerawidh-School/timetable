@@ -6,9 +6,18 @@ services:
       - "8080:80"
     volumes:
       - /home/sukhon_server/timetable/.env:/var/www/html/.env
+    environment:
+      # secret ร่วมกับ schoolos-portal สำหรับตรวจ JWT (SSO)
+      # ใส่ในไฟล์ .env ที่ mount ด้านบนแทนก็ได้ (config.php โหลดให้เอง)
+      - JWT_SECRET=${JWT_SECRET:-}
     depends_on:
       - timetable-db
     restart: always
+    networks:
+      - default
+      # join network เดียวกับ school-gateway เพื่อให้ nginx route /timetable/ มาถึง
+      # สร้างครั้งแรก: docker network create school-net
+      - school-net
 
   timetable-db:
     image: mysql:8
@@ -33,3 +42,7 @@ services:
       - timetable-db
 volumes:
   timetable_db_data:
+
+networks:
+  school-net:
+    external: true

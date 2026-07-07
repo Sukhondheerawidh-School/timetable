@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/sso.php';
 
 // เริ่ม session ถ้ายังไม่มี
 if (session_status() === PHP_SESSION_NONE) {
@@ -136,6 +137,7 @@ function login($username, $password) {
           'role'     => $user['role'],
         ];
         $_SESSION['LAST_ACTIVITY'] = time();
+        unset($_SESSION['sso_skip']); // login มือ = เปิดทาง SSO รอบหน้าอีกครั้ง
         return true;
       }
       login_rate_fail(); // บันทึกว่า login ล้มเหลว
@@ -170,6 +172,8 @@ function isLoggedIn() {
 function currentUser() { return $_SESSION['user'] ?? null; }
 
 function requireLogin() {
+  // ลอง auto-login จาก SchoolOS token ก่อน (ไม่มี/ไม่ผ่าน = เงียบ ไป flow เดิม)
+  sso_attempt_login();
   if (!isLoggedIn()) {
     header('Location: ' . url('login.php'));
     exit;

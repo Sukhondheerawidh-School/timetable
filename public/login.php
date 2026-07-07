@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../app/auth.php';
 require_once __DIR__ . '/../app/helpers.php';
 
+// เข้าหน้า login ทั้งที่มี SchoolOS token ใช้ได้อยู่ → พาเข้าระบบเลย
+sso_attempt_login();
 if (isLoggedIn()) redirect('index.php');
 
 $err = '';
